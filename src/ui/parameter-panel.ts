@@ -83,9 +83,12 @@ export function mountParameterPanel(container: HTMLElement, values: ParameterVal
   const pane = new Pane({ container });
   // A clicked button, checkbox or dropdown keeps focus, and then Space would press it again as
   // well as toggling pause (#18's keymap only skips text entry). Text boxes keep focus for typing.
-  const release = () => {
+  // A dropdown is released only on `change`: blurring it on click closes its menu as it opens.
+  const release = (event: Event) => {
     const focused = document.activeElement;
-    if (focused instanceof HTMLElement && pane.element.contains(focused) && !isTextBox(focused)) focused.blur();
+    if (!(focused instanceof HTMLElement) || !pane.element.contains(focused) || isTextBox(focused)) return;
+    if (event.type === 'click' && focused instanceof HTMLSelectElement) return;
+    focused.blur();
   };
   pane.element.addEventListener('click', release);
   pane.element.addEventListener('change', release);
