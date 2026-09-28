@@ -1,3 +1,4 @@
+import { glSizeLimits, outputTargetSizes, sizeLimitProblem } from '../capture/output-capture';
 import { compileProgram, drawFullscreen } from '../gl/program';
 import { type Target, createBlankTexture, createTarget, deleteTarget, resampleTarget } from '../gl/target';
 import type { ShaderSource } from '../shader-source';
@@ -97,7 +98,24 @@ export interface CaptureRenderer extends Renderer {
    * Sketch isn't redrawn.
    */
   readMain(): MainImage | null;
+  /** The inputs of the frame on screen (the last one drawn), or `null` before anything is drawn. */
+  lastFrame(): FrameInputs | null;
+  /**
+   * Runs every Pass once off-screen at `frame.width × frame.height` and reads back `main`, for an
+   * Output size Capture of a Sketch without Feedback (#8 decision 5). The buffers are temporary:
+   * buffer `scale` is taken relative to this size, `size: [w, h]` stays, and all of them are
+   * released before this returns. The live buffers, the canvas and the frame on screen are not
+   * touched. Sizes beyond the device's limits, `OUT_OF_MEMORY`, an incomplete framebuffer and a
+   * lost context come back as an error instead of an image.
+   */
+  renderOffscreen(frame: FrameInputs): OffscreenResult;
 }
+
+/** An off-screen run's `main` (RGBA8, rows bottom-up), or why there is none. */
+export type OffscreenResult = { ok: true; width: number; height: number; pixels: Uint8Array } | { ok: false; error: string };
+
+/** `main` is read through RGBA8, which clamps to 0..1 as the canvas does (#8 decision 9). */
+const CAPTURE_TARGET = { format: 'rgba8', filter: 'nearest', wrap: 'clamp' } as const;
 
 export function createRenderer(gl: WebGL2RenderingContext): CaptureRenderer {
   // The fullscreen triangle needs no attributes, but a bound VAO keeps every driver happy.
@@ -185,6 +203,25 @@ export function createRenderer(gl: WebGL2RenderingContext): CaptureRenderer {
     return pixels;
   };
 
+  /** Forgets GL errors raised before an off-screen run, so only its own are reported. Bounded: a lost context keeps answering. */
+  const clearErrors = () => {
+    for (let i = 0; i < 16 && gl.getError() !== gl.NO_ERROR; i++);
+  };
+
+  /** What went wrong on the GPU since `clearErrors`, if anything. */
+  const glProblem = (targets: Target[]): string | null => {
+    if (gl.isContextLost()) return 'WebGL context를 잃었습니다';
+    const error = gl.getError();
+    if (error === gl.OUT_OF_MEMORY) return 'GPU 메모리가 모자랍니다 (OUT_OF_MEMORY)';
+    for (const target of targets) {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, target.framebuffer);
+      const status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+      if (status !== gl.FRAMEBUFFER_COMPLETE) return `${target.width}×${target.height} 버퍼를 만들지 못했습니다 (framebuffer 0x${status.toString(16)})`;
+    }
+    if (error !== gl.NO_ERROR) return `GL 오류 0x${error.toString(16)}`;
+    return null;
+  };
+
   return {
     setShader(pass, shader) {
       const { source, prefixLines } = wrapMainImage(shader.source);
@@ -253,7 +290,7 @@ export function createRenderer(gl: WebGL2RenderingContext): CaptureRenderer {
       const main = buffers.get('main');
       const source = main?.targets[main.slots.current()];
       const [width, height] = source ? [source.width, source.height] : [drawn.width, drawn.height];
-      const target = createTarget(gl, { format: 'rgba8', filter: 'nearest', wrap: 'clamp' }, width, height);
+      const target = createTarget(gl, CAPTURE_TARGET, width, height);
       try {
         if (source) {
           // The display's clamp, into RGBA8 instead of the canvas.
@@ -272,6 +309,45 @@ export function createRenderer(gl: WebGL2RenderingContext): CaptureRenderer {
       } finally {
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
         deleteTarget(gl, target);
+      }
+    },
+
+    lastFrame: () => drawn,
+
+    renderOffscreen(frame) {
+      if (!graph || !isRunning()) return { ok: false, error: '실행 중인 버전이 없습니다' };
+      const current = graph;
+      const sizes = outputTargetSizes(current, [frame.width, frame.height]);
+      const tooBig = sizeLimitProblem(sizes, glSizeLimits(gl));
+      if (tooBig) return { ok: false, error: tooBig };
+
+      clearErrors();
+      // One target per running Pass: this run is only for Sketches without Feedback, so no Pass
+      // needs a second slot, and `main` gets one too instead of the canvas.
+      const temporary = new Map<string, PassBuffer>();
+      const targets: Target[] = [];
+      try {
+        current.order.forEach((name, i) => {
+          const node = current.passes[name]!;
+          const [width, height] = sizes[i]!;
+          const target = createTarget(gl, name === 'main' ? CAPTURE_TARGET : node.buffer, width, height);
+          targets.push(target);
+          temporary.set(name, { node, slots: createSlots(false), targets: [target] });
+        });
+        const allocation = glProblem(targets);
+        if (allocation) return { ok: false, error: allocation };
+
+        for (const buffer of temporary.values()) buffer.slots.beginFrame();
+        runPasses(current, frame, temporary);
+        const main = temporary.get('main')!.targets[0]!;
+        gl.bindFramebuffer(gl.FRAMEBUFFER, main.framebuffer);
+        const pixels = readPixels(main.width, main.height);
+        const problem = glProblem([]);
+        if (problem) return { ok: false, error: problem };
+        return { ok: true, width: main.width, height: main.height, pixels };
+      } finally {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        for (const target of targets) deleteTarget(gl, target);
       }
     },
   };
