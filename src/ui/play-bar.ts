@@ -1,6 +1,7 @@
 import type { PlayBarView } from './play-bar-view';
-import type { PlaybackActions } from './playback-controls';
+import { type PlaybackActions, playbackTitle } from './playback-actions';
 
+/** The mounted play bar; `render` updates its text each frame. */
 export interface PlayBar {
   render(view: PlayBarView): void;
 }
@@ -27,19 +28,19 @@ export function mountPlayBar(parent: HTMLElement, actions: PlaybackActions): Pla
   const root = document.createElement('div');
   root.className = 'play-bar hud-glass';
 
-  const toggle = button('⏸', '일시정지 (Space)', actions.togglePause);
+  const toggle = button('', '', actions.togglePause); // filled in by render
   const speed = span('play-bar-speed');
-  speed.title = '1×로 (0)';
+  speed.title = playbackTitle('normalSpeed');
   speed.addEventListener('click', actions.normalSpeed);
   const clock = span('play-bar-clock');
   root.append(
     toggle,
-    button('↺', '리셋: 시간 0, Feedback 비움 (R)', actions.reset),
-    button('⏭', '한 프레임 진행 (.)', actions.step),
+    button('↺', playbackTitle('reset'), actions.reset),
+    button('⏭', playbackTitle('step'), actions.step),
     span('play-bar-sep'),
-    button('−', '느리게 (-)', actions.slower),
+    button('−', playbackTitle('slower'), actions.slower),
     speed,
-    button('+', '빠르게 (=)', actions.faster),
+    button('+', playbackTitle('faster'), actions.faster),
     span('play-bar-sep'),
     clock,
   );

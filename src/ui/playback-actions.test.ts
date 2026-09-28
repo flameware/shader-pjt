@@ -3,7 +3,7 @@ import { createClock } from '../engine/clock';
 import { createEngine } from '../engine/engine';
 import type { FrameInputs, Renderer } from '../engine/renderer';
 import { type KeyInput, createKeymap } from './keymap';
-import { addPlaybackKeys, playbackActions } from './playback-controls';
+import { addPlaybackKeys, playbackActions } from './playback-actions';
 
 const size = { width: 4, height: 3, mouse: [0, 0, 0, 0] as const };
 
@@ -21,7 +21,7 @@ function setup() {
   const keymap = createKeymap();
   addPlaybackKeys(keymap, playbackActions(engine));
   const press = (key: string) =>
-    keymap.handle({ key, shiftKey: false, metaKey: false, ctrlKey: false, altKey: false, repeat: false, target: null } satisfies KeyInput);
+    keymap.handle({ key, code: '', isComposing: false, shiftKey: false, metaKey: false, ctrlKey: false, altKey: false, repeat: false, target: null } satisfies KeyInput);
   return { engine, press, drawn, clears: () => clears };
 }
 

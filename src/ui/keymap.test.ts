@@ -3,6 +3,8 @@ import { type KeyInput, createKeymap, keyLabel } from './keymap';
 
 const press = (key: string, extra: Partial<KeyInput> = {}): KeyInput => ({
   key,
+  code: /^[a-z]$/i.test(key) ? `Key${key.toUpperCase()}` : '',
+  isComposing: false,
   shiftKey: false,
   metaKey: false,
   ctrlKey: false,
@@ -48,6 +50,18 @@ describe('keymap', () => {
     keymap.handle(press('?', { shiftKey: true }));
     keymap.handle(press('='));
     expect(runs).toEqual(['?', '=']);
+  });
+
+  it('a letter works with a non-Latin input source active, by its physical key', () => {
+    const { keymap, runs } = setup(['R', 'H']);
+    keymap.handle(press('ㄱ', { code: 'KeyR' }));
+    keymap.handle(press('ㅗ', { code: 'KeyH' }));
+    expect(runs).toEqual(['R', 'H']);
+  });
+
+  it('leaves keys to an IME that is composing', () => {
+    const { keymap } = setup(['R']);
+    expect(keymap.handle(press('Process', { code: 'KeyR', isComposing: true }))).toBe(false);
   });
 
   it('Space names the space bar', () => {

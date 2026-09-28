@@ -1,7 +1,7 @@
 /** The playback speeds the play bar and `-`/`=` step through (#9 decision 6). */
 export const SPEEDS: readonly number[] = [0.1, 0.25, 0.5, 1, 2, 4];
-const SLOWEST = 0.1;
-const FASTEST = 4;
+const SLOWEST = SPEEDS[0]!;
+const FASTEST = SPEEDS[SPEEDS.length - 1]!;
 
 /** The next speed step above `speed`, or the top step. */
 export function faster(speed: number): number {

@@ -5,7 +5,7 @@ import type { Keymap } from './keymap';
 const IDLE_MS = 2500;
 
 /**
- * The HUD's regions (#9 decision 1–6). Features mount their controls into these; the HUD only
+ * The HUD's regions (#9 decision 1–6). Features mount their UI into these; the HUD only
  * decides when they show.
  */
 export interface Hud {

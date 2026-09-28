@@ -4,17 +4,18 @@ import { type Hud, mountHud } from './hud';
 import './hud.css';
 import { type Keymap, createKeymap } from './keymap';
 import { mountPlayBar } from './play-bar';
-import { createFpsMeter, playBarView } from './play-bar-view';
-import { addPlaybackKeys, playbackActions } from './playback-controls';
+import { createFpsMeter } from './fps-meter';
+import { playBarView } from './play-bar-view';
+import { addPlaybackKeys, playbackActions } from './playback-actions';
 import { mountShortcutHelp } from './shortcut-help';
 import { type Toasts, mountToasts } from './toast';
 
 /**
  * The browser UI around the canvas (#9 B): HUD, play bar, toasts, shortcut table and the one
- * keymap. Later features plug in here: keys through `keymap.add`, controls into the HUD
+ * keymap. Later features plug in here: keys through `keymap.add`, their UI into the HUD
  * regions, notices through `toasts.show`.
  */
-export interface Controls {
+export interface BrowserUi {
   keymap: Keymap;
   hud: Hud;
   toasts: Toasts;
@@ -22,7 +23,7 @@ export interface Controls {
   frame(tick: ClockTick, nowMs: number): void;
 }
 
-export function mountControls(parent: HTMLElement, engine: Engine): Controls {
+export function mountBrowserUi(parent: HTMLElement, engine: Engine): BrowserUi {
   const keymap = createKeymap();
   window.addEventListener('keydown', (event) => {
     if (keymap.handle(event)) event.preventDefault();

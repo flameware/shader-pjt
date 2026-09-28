@@ -1,6 +1,6 @@
 /*
  * The HUD (#9 decision 3): overlays that float over the canvas and never change its size.
- * The error banner (index.html) is not part of it and is never hidden with it.
+ * The error banner (`mountBanner`) is not part of it and is never hidden with it.
  */
 .hud {
   position: fixed;

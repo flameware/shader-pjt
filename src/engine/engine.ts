@@ -28,6 +28,11 @@ export interface Engine {
   reset(): void;
   readonly playback: Playback;
   /**
+   * True while a paused Feedback Sketch holds its picture: the next `frame` draws nothing. The
+   * caller should then leave the canvas alone (resizing it would clear the held picture).
+   */
+  isFrozen(): boolean;
+  /**
    * Advances the clock and draws the frame at `nowMs` (a `requestAnimationFrame` timestamp);
    * returns the time it drew with. While paused, a Sketch without Feedback keeps redrawing the
    * same moment (so Parameter changes show), and a Feedback Sketch is not drawn at all: running
@@ -51,6 +56,7 @@ export function createEngine(renderer: Renderer, clock: Clock): Engine {
       clock.reset();
     },
     playback: clock,
+    isFrozen: () => feedback && !clock.willAdvance(),
     frame(nowMs, size) {
       const tick = clock.tick(nowMs);
       if (tick.advanced || !feedback) renderer.draw({ ...tick, ...size });

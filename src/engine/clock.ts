@@ -30,6 +30,8 @@ export interface Clock {
   /** Multiplies how fast `iTime` runs (and `iTimeDelta` with it); `iFrame` still counts drawn frames. */
   setSpeed(speed: number): void;
   speed(): number;
+  /** Whether the next `tick` moves time forward (playing, a step pending, or frame 0 still to draw). */
+  willAdvance(): boolean;
 }
 
 /** How long a single-frame step lasts at 1×: one frame at 60 fps. */
@@ -43,7 +45,12 @@ export function createClock(): Clock {
   let speed = 1;
   let stepPending = false;
 
+  // Frame 0 is always drawn, so a reset while paused still shows the start.
+  const willAdvance = () => !paused || stepPending || frame < 0;
+
   return {
+    willAdvance,
+
     reset() {
       lastMs = null;
       timeMs = 0;
@@ -72,8 +79,7 @@ export function createClock(): Clock {
     tick(nowMs) {
       const wallMs = lastMs === null ? 0 : nowMs - lastMs;
       lastMs = nowMs;
-      // Frame 0 is always drawn, so a reset while paused still shows the start.
-      const advanced = !paused || stepPending || frame < 0;
+      const advanced = willAdvance();
       if (!advanced) return { time: timeMs / 1000, timeDelta: 0, frame, advanced };
       const deltaMs = (frame < 0 ? 0 : stepPending ? STEP_MS : wallMs) * speed;
       stepPending = false;

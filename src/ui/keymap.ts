@@ -5,7 +5,11 @@
  *
  * Key names: a letter (`R`, case-insensitive), `Shift+` a letter (`Shift+C`), the character a
  * symbol key types (`?`, `=`, `[`; Shift is whatever it took to type it), `Space`, `Escape`, or
- * `Mod+` any of these for ⌘ on macOS / Ctrl elsewhere (`Mod+K`).
+ * `Mod+` any of these for ⌘ on macOS / Ctrl elsewhere (`Mod+K`). Alt combinations are left to
+ * the browser (on macOS, Option changes the character anyway).
+ *
+ * Letters also work with a non-Latin input source active (e.g. the Korean 2-set layout types
+ * `ㄱ` for R): then the physical key (`KeyR`) decides.
  */
 export interface KeyBinding {
   /** Every key that triggers it; the shortcut table shows them all. */
@@ -20,6 +24,10 @@ export interface KeyBinding {
 /** The parts of a `KeyboardEvent` the keymap reads. */
 export interface KeyInput {
   key: string;
+  /** The physical key, e.g. `KeyR`. */
+  code: string;
+  /** True while an IME is composing; such keys belong to the IME. */
+  isComposing: boolean;
   shiftKey: boolean;
   metaKey: boolean;
   ctrlKey: boolean;
@@ -28,6 +36,7 @@ export interface KeyInput {
   target: unknown;
 }
 
+/** The shortcut registry; `mountBrowserUi` feeds it every `keydown`. */
 export interface Keymap {
   /** Registers a binding; returns a function that removes it. Throws if a key is already bound. */
   add(binding: KeyBinding): () => void;
@@ -44,20 +53,27 @@ export function keyLabel(name: string, mac: boolean): string {
 
 const isLetter = (key: string) => /^[a-z]$/i.test(key);
 
-function canonical(key: string, mod: boolean, alt: boolean, shift: boolean): string {
+function canonical(key: string, mod: boolean, shift: boolean): string {
   const name = key === ' ' ? 'Space' : isLetter(key) ? key.toUpperCase() : key;
   // Shift is part of a letter's identity only; a symbol is named by what it types.
   const withShift = shift && isLetter(key);
-  return `${mod ? 'Mod+' : ''}${alt ? 'Alt+' : ''}${withShift ? 'Shift+' : ''}${name}`;
+  return `${mod ? 'Mod+' : ''}${withShift ? 'Shift+' : ''}${name}`;
 }
 
 function parse(name: string): string {
-  const match = /^((?:(?:Mod|Alt|Shift)\+)*)(.+)$/.exec(name);
+  const match = /^((?:(?:Mod|Shift)\+)*)(.+)$/.exec(name);
   if (!match) throw new Error(`알 수 없는 단축키 이름: ${name}`);
   const [, prefix = '', key = ''] = match;
   const shift = prefix.includes('Shift+');
   if (shift && !isLetter(key)) throw new Error(`Shift+는 글자 키에만 씁니다 (기호는 입력되는 글자로): ${name}`);
-  return canonical(key === 'Space' ? ' ' : key, prefix.includes('Mod+'), prefix.includes('Alt+'), shift);
+  return canonical(key === 'Space' ? ' ' : key, prefix.includes('Mod+'), shift);
+}
+
+/** The character the keymap goes by: the typed Latin letter or symbol, else the physical letter key. */
+function typedKey({ key, code }: KeyInput): string {
+  if (isLetter(key) || key.length !== 1) return key;
+  const physical = /^Key([A-Z])$/.exec(code);
+  return physical && !/[\x20-\x7e]/.test(key) ? physical[1]! : key;
 }
 
 /** Typing into these must never trigger a shortcut (palette, Tweakpane number inputs, …). */
@@ -88,8 +104,8 @@ export function createKeymap(): Keymap {
     },
 
     handle(input) {
-      if (isTextEntry(input.target)) return false;
-      const id = canonical(input.key, input.metaKey || input.ctrlKey, input.altKey, input.shiftKey);
+      if (input.isComposing || input.altKey || isTextEntry(input.target)) return false;
+      const id = canonical(typedKey(input), input.metaKey || input.ctrlKey, input.shiftKey);
       const binding = byKey.get(id);
       if (!binding) return false;
       // A held-down key is still swallowed, so it can't reach a focused button either.

@@ -108,6 +108,23 @@ describe('engine', () => {
     expect(fake.frames.map((f) => f.frame)).toEqual([0, 1, 0]);
   });
 
+  it('isFrozen: only a paused Feedback Sketch with no step pending holds its picture', () => {
+    const engine = createEngine(fakeRenderer().renderer, createClock());
+    engine.setGraph(feedbackGraph);
+    engine.frame(1000, size);
+    const states = [engine.isFrozen()];
+    engine.playback.setPaused(true);
+    states.push(engine.isFrozen());
+    engine.playback.step();
+    states.push(engine.isFrozen());
+    engine.frame(1016, size);
+    states.push(engine.isFrozen());
+    engine.setGraph(graph);
+    engine.frame(1032, size);
+    states.push(engine.isFrozen());
+    expect(states).toEqual([false, true, false, true, false]);
+  });
+
   it('frame() reports the time it used, for the play bar', () => {
     const engine = createEngine(fakeRenderer().renderer, createClock());
     engine.frame(1000, size);
