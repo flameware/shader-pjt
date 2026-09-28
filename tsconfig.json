@@ -13,7 +13,8 @@
     "verbatimModuleSyntax": true,
     "allowImportingTsExtensions": true,
     "skipLibCheck": true,
-    "noEmit": true
+    "noEmit": true,
+    "paths": { "playground": ["./src/sketch/define.ts"] }
   },
-  "include": ["src", "plugins", "vite.config.ts"]
+  "include": ["src", "plugins", "sketches", "vite.config.ts"]
 }

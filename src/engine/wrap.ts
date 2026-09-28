@@ -1,16 +1,15 @@
+import { uniformDeclarations } from './uniforms';
+
 /**
- * Engine lines put in front of a Pass body. Uniform names and types match Shadertoy.
- * `iChannel0..3` join this list when multi-pass lands (#17).
+ * Engine lines put in front of a Pass body. `sampler2D` defaults to `lowp` in a fragment shader,
+ * which could cost precision when reading float buffers, so it is raised to `highp`.
  */
 const PREFIX = [
   '#version 300 es',
   'precision highp float;',
   'precision highp int;',
-  'uniform vec3 iResolution;',
-  'uniform float iTime;',
-  'uniform float iTimeDelta;',
-  'uniform int iFrame;',
-  'uniform vec4 iMouse;',
+  'precision highp sampler2D;',
+  ...uniformDeclarations(),
   'out vec4 shaderPlaygroundFragColor;',
 ];
 

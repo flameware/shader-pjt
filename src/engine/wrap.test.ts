@@ -27,6 +27,9 @@ describe('wrapMainImage', () => {
       'uniform float iTimeDelta;',
       'uniform int iFrame;',
       'uniform vec4 iMouse;',
+      'uniform vec3 iChannelResolution[4];',
+      'uniform sampler2D iChannel0;',
+      'uniform sampler2D iChannel3;',
     ]) {
       expect(prefix).toContain(decl);
     }

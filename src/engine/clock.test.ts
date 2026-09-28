@@ -13,4 +13,13 @@ describe('clock', () => {
     expect(clock.tick(5016)).toEqual({ time: 0.016, timeDelta: 0.016, frame: 1 });
     expect(clock.tick(5050)).toEqual({ time: 0.05, timeDelta: 0.034, frame: 2 });
   });
+
+  it('starts over at iTime 0, iFrame 0 on the frame after a reset', () => {
+    const clock = createClock();
+    clock.tick(5000);
+    clock.tick(5016);
+    clock.reset();
+    expect(clock.tick(5032)).toEqual({ time: 0, timeDelta: 0, frame: 0 });
+    expect(clock.tick(5048)).toEqual({ time: 0.016, timeDelta: 0.016, frame: 1 });
+  });
 });
