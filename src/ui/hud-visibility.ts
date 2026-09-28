@@ -1,11 +1,11 @@
 /**
- * `shown`: on screen. `idle`: faded out after the mouse stopped moving; movement brings it back.
+ * `shown`: on screen. `idle`: faded out after no mouse or key input; any input brings it back.
  * `off`: turned off with `H`; only `H` brings it back.
  */
 export type HudState = 'shown' | 'idle' | 'off';
 
 export interface HudVisibility {
-  /** The mouse moved (or was pressed): show the HUD and restart the idle timer. */
+  /** The mouse moved or was pressed, or a key was pressed: show the HUD and restart the idle timer. */
   activity(): void;
   /** Whether the pointer is over a HUD element; the HUD never goes idle while it is. */
   setHovered(hovered: boolean): void;
