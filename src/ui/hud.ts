@@ -55,6 +55,7 @@ export function mountHud(parent: HTMLElement, keymap: Keymap): Hud {
   }
   window.addEventListener('pointermove', () => visibility.activity());
   window.addEventListener('pointerdown', () => visibility.activity());
+  window.addEventListener('keydown', () => visibility.activity());
 
   keymap.add({ keys: ['H'], description: 'HUD 끄기 / 켜기', run: () => visibility.toggle() });
 
