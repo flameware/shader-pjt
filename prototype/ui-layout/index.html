@@ -1,0 +1,708 @@
+<!doctype html>
+<!--
+  PROTOTYPE — throwaway. Issue #9 브라우저 UI 레이아웃.
+  세 가지 레이아웃 변형을 한 페이지에서 `?variant=A|B|C`로 전환한다(←/→ 또는 아래 바).
+  렌더는 진짜 WebGL2(템플릿 셰이더 + feedback ping-pong), 패널은 Tweakpane v4. 저장·dev server·hot reload는 없다.
+  Capture는 실제 파일을 쓰지 않고 저장될 경로와 썸네일만 토스트로 보여준다. 에러 오버레이는 `E`로 흉내 낸다.
+-->
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PROTOTYPE — UI 레이아웃 (#9)</title>
+<style>
+  :root { --bg:#0d0d0f; --panel:#17171a; --line:#2a2a30; --fg:#ddd; --dim:#888; --acc:#7aa2ff; --err:#ff5a5a; color-scheme:dark; }
+  * { box-sizing:border-box; }
+  html, body { margin:0; height:100%; background:var(--bg); color:var(--fg); font:13px/1.4 system-ui, sans-serif; overflow:hidden; }
+  button, select, input { font:inherit; color:inherit; background:#222228; border:1px solid var(--line); border-radius:6px; padding:4px 8px; }
+  button { cursor:pointer; white-space:nowrap; }
+  button:hover:not(:disabled) { background:#2c2c34; }
+  button:disabled, select:disabled { opacity:.35; cursor:not-allowed; }
+  label { display:inline-flex; align-items:center; gap:4px; color:var(--dim); }
+  .mono { font-family:ui-monospace, Menlo, monospace; font-size:12px; }
+  .dim { color:var(--dim); }
+  .grow { flex:1; }
+
+  /* bottom 48px is prototype chrome (variant switcher), not part of the design */
+  #app { height:calc(100% - 48px); }
+
+  .stage { position:relative; display:flex; align-items:center; justify-content:center; overflow:hidden; background:#050506; min-width:0; min-height:0; }
+  .stage canvas { display:block; box-shadow:0 0 0 1px #1c1c20; touch-action:none; }
+  body.paused .stage::after { content:'⏸ paused'; position:absolute; top:10px; left:10px; padding:2px 8px; border-radius:4px; background:rgba(0,0,0,.6); color:#fff; font-size:12px; pointer-events:none; }
+  .err { position:absolute; z-index:5; margin:0; white-space:pre; font:12px/1.5 ui-monospace, Menlo, monospace; color:#ffd6d6; background:rgba(40,0,0,.88); border:1px solid var(--err); border-radius:6px; padding:10px 12px; overflow:auto; }
+  .err[hidden] { display:none; }
+  .badges i { font-style:normal; font-size:11px; padding:1px 6px; border-radius:9px; background:#26262c; color:var(--dim); margin-left:4px; }
+  .badges i.fb { background:#3a2a10; color:#ffb65c; }
+  .list { list-style:none; margin:0; padding:0; overflow:auto; }
+  .list li { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:6px 10px; cursor:pointer; border-radius:6px; }
+  .list li:hover, .list li.sel { background:#1f1f24; }
+  .list li.on { background:#26304a; color:#fff; }
+
+  /* ---- A: 3단 IDE ---- */
+  .A { display:grid; grid-template-columns:230px 1fr 290px; height:100%; }
+  .A-side { display:flex; flex-direction:column; gap:8px; padding:10px; min-height:0; background:var(--panel); border-right:1px solid var(--line); }
+  .A-title { display:flex; justify-content:space-between; color:var(--dim); text-transform:uppercase; font-size:11px; letter-spacing:.08em; }
+  .A-side .list { flex:1; }
+  .A-foot { color:var(--dim); font-size:11px; }
+  .A-center { display:flex; flex-direction:column; min-width:0; min-height:0; }
+  .A-center .stage { flex:1; }
+  .A-head, .A-bar { display:flex; align-items:center; gap:8px; padding:8px 12px; background:var(--panel); flex-wrap:wrap; }
+  .A-head { border-bottom:1px solid var(--line); }
+  .A-bar { border-top:1px solid var(--line); }
+  .A-params { padding:10px; overflow:auto; background:var(--panel); border-left:1px solid var(--line); }
+  .err-A { left:12px; right:12px; bottom:12px; max-height:40%; }
+  body.ui-hidden .A { grid-template-columns:1fr; }
+  body.ui-hidden .A-side, body.ui-hidden .A-params, body.ui-hidden .A-head, body.ui-hidden .A-bar { display:none; }
+
+  /* ---- B: 풀스크린 HUD ---- */
+  .B { position:relative; height:100%; }
+  .B .stage { position:absolute; inset:0; }
+  .hud { position:absolute; z-index:6; transition:opacity .4s; }
+  .B.idle .hud:not(:hover) { opacity:0; }
+  body.ui-hidden .hud { display:none; }
+  .glass { background:rgba(20,20,24,.72); backdrop-filter:blur(8px); border:1px solid var(--line); }
+  .B-tl { top:12px; left:12px; display:flex; align-items:center; gap:6px; }
+  .B-name { font-size:14px; }
+  .B-tr { top:12px; right:12px; width:290px; max-height:calc(100% - 90px); overflow:auto; }
+  .B-bar { bottom:14px; left:50%; transform:translateX(-50%); display:flex; align-items:center; gap:6px; padding:6px 10px; border-radius:999px; white-space:nowrap; }
+  .B-bar button { border-radius:999px; background:transparent; border-color:transparent; }
+  .B-bar .sep { width:1px; height:18px; background:var(--line); }
+  .B-hint { bottom:18px; left:12px; color:var(--dim); font-size:11px; }
+  .err-B { top:56px; left:50%; transform:translateX(-50%); max-width:70%; }
+
+  /* ---- C: 캔버스 + 단일 패널 ---- */
+  .C { display:grid; grid-template-columns:1fr 320px; height:100%; }
+  .C-side { padding:8px; overflow:auto; background:var(--panel); border-left:1px solid var(--line); }
+  .err-C { position:static; margin-bottom:8px; white-space:pre-wrap; }
+  body.ui-hidden .C { grid-template-columns:1fr; }
+  body.ui-hidden .C-side { display:none; }
+
+  /* ---- shared overlays ---- */
+  #palette { position:fixed; inset:0; z-index:150; background:rgba(0,0,0,.4); }
+  #palette[hidden] { display:none; }
+  #palette .box { position:absolute; top:14%; left:50%; transform:translateX(-50%); width:440px; max-height:60%; display:flex; flex-direction:column; gap:6px; padding:8px; border-radius:10px; background:var(--panel); border:1px solid var(--line); box-shadow:0 20px 60px rgba(0,0,0,.6); }
+  #palette input { padding:8px 10px; font-size:14px; }
+  #help { position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); z-index:160; padding:14px 18px; border-radius:10px; background:var(--panel); border:1px solid var(--line); box-shadow:0 20px 60px rgba(0,0,0,.6); }
+  #help[hidden] { display:none; }
+  #help table { border-collapse:collapse; }
+  #help td { padding:2px 10px 2px 0; }
+  #help td:first-child { font-family:ui-monospace, Menlo, monospace; color:var(--acc); }
+  #toasts { position:fixed; right:12px; bottom:60px; z-index:200; display:flex; flex-direction:column; gap:6px; align-items:flex-end; pointer-events:none; }
+  .toast { display:flex; gap:8px; align-items:center; max-width:460px; padding:8px 10px; border-radius:8px; background:#222228; border:1px solid var(--line); box-shadow:0 6px 20px rgba(0,0,0,.5); animation:fade 4s forwards; }
+  .toast img { width:48px; height:48px; object-fit:contain; background:#000; border-radius:4px; }
+  @keyframes fade { 0%,85% { opacity:1; } 100% { opacity:0; } }
+  #flash { position:fixed; inset:0; z-index:190; background:#fff; opacity:0; pointer-events:none; }
+  #flash.go { animation:flash .25s; }
+  @keyframes flash { from { opacity:.5; } to { opacity:0; } }
+
+  /* prototype variant switcher */
+  #switcher { position:fixed; left:50%; bottom:8px; transform:translateX(-50%); z-index:300; display:flex; align-items:center; gap:10px; padding:4px 6px; border-radius:999px; background:#fff; color:#111; font-weight:600; box-shadow:0 4px 20px rgba(0,0,0,.5); }
+  #switcher button { width:28px; height:28px; padding:0; border:0; border-radius:999px; background:#111; color:#fff; }
+  #switcher small { color:#c00; font-size:10px; letter-spacing:.08em; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<div id="palette" hidden><div class="box">
+  <input id="palInput" placeholder="Sketch 이름…" autocomplete="off">
+  <ul class="list" id="palList"></ul>
+</div></div>
+
+<div id="help" hidden>
+  <b>단축키</b> <span class="dim">(? 로 닫기)</span>
+  <table>
+    <tr><td>Space</td><td>일시정지 / 재생</td></tr>
+    <tr><td>R</td><td>리셋 (시간 0, feedback 비움)</td></tr>
+    <tr><td>.</td><td>한 프레임 진행 (일시정지 중)</td></tr>
+    <tr><td>- / = / 0</td><td>속도 낮춤 / 높임 / 1×</td></tr>
+    <tr><td>C</td><td>화면 Capture</td></tr>
+    <tr><td>Shift+C</td><td>Output size Capture</td></tr>
+    <tr><td>[ / ]</td><td>이전 / 다음 Sketch</td></tr>
+    <tr><td>⌘K, /</td><td>Sketch 팔레트</td></tr>
+    <tr><td>H</td><td>UI 숨김 (캔버스만)</td></tr>
+    <tr><td>E</td><td><i>프로토타입</i>: 컴파일 에러 흉내</td></tr>
+    <tr><td>N</td><td><i>프로토타입</i>: 새 Sketch 감지 흉내 (#12)</td></tr>
+    <tr><td>← / →</td><td><i>프로토타입</i>: 레이아웃 변형 전환</td></tr>
+  </table>
+</div>
+
+<div id="toasts"></div>
+<div id="flash"></div>
+
+<div id="switcher">
+  <button data-sw="-1" title="←">‹</button>
+  <span><small>PROTOTYPE</small> <span id="swLabel"></span></span>
+  <button data-sw="1" title="→">›</button>
+</div>
+
+<script type="module">
+import { Pane } from 'https://cdn.jsdelivr.net/npm/tweakpane@4.0.5/dist/tweakpane.min.js';
+
+// ---------------------------------------------------------------- shaders (Sketch sources)
+const SRC = {
+default: `uniform float speed; // @param 0..2 = 1
+
+void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+    vec2 uv = (2.0 * fragCoord - iResolution.xy) / min(iResolution.x, iResolution.y);
+    float t = iTime * speed;
+    vec3 col = 0.5 + 0.5 * cos(t + uv.xyx + vec3(0.0, 2.0, 4.0));
+    fragColor = vec4(col, 1.0);
+}`,
+rings: `uniform float speed;  // @param 0..2 = 1
+uniform int   count;  // @param 1..20 = 6
+uniform vec3  tint;   // @param color = #ff8040
+uniform vec2  center; // @param -1..1 = 0, 0
+uniform int   mode;   // @param circle|square|diamond = circle
+uniform bool  invert; // @param = false
+
+void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+    vec2 uv = (2.0 * fragCoord - iResolution.xy) / min(iResolution.x, iResolution.y) - center;
+    float d = mode == 0 ? length(uv) : mode == 1 ? max(abs(uv.x), abs(uv.y)) : abs(uv.x) + abs(uv.y);
+    float r = 0.5 + 0.5 * sin(d * float(count) * 6.2831 - iTime * speed * 3.0);
+    vec3 col = mix(vec3(0.05), tint, smoothstep(0.3, 0.7, r));
+    if (invert) col = 1.0 - col;
+    fragColor = vec4(col, 1.0);
+}`,
+waves: `uniform float freq; // @param 1..30 = 10
+uniform float amp;  // @param 0..1 = 0.3 step 0.01
+uniform vec3  tint; // @param color = #40a0ff
+
+void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+    vec2 uv = (2.0 * fragCoord - iResolution.xy) / min(iResolution.x, iResolution.y);
+    float v = 0.0;
+    for (int i = 0; i < 5; i++) {
+        float fi = float(i);
+        float y = amp * sin(uv.x * freq * 0.3 + iTime * (1.0 + fi * 0.3) + fi) + (fi - 2.0) * 0.25;
+        v += smoothstep(0.02, 0.0, abs(uv.y - y));
+    }
+    fragColor = vec4(mix(vec3(0.02, 0.02, 0.05), tint, clamp(v, 0.0, 1.0)), 1.0);
+}`,
+trails: `uniform float decay; // @param 0.8..1 = 0.96 step 0.001
+
+void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+    vec2 st = fragCoord / iResolution.xy;
+    vec2 uv = (2.0 * fragCoord - iResolution.xy) / min(iResolution.x, iResolution.y);
+    vec3 prevCol = texture(iChannel0, st).rgb * decay;
+    vec2 p = 0.6 * vec2(cos(iTime), sin(iTime * 1.3));
+    float d = smoothstep(0.05, 0.04, length(uv - p));
+    if (iMouse.z > 0.0) {
+        vec2 m = (2.0 * iMouse.xy - iResolution.xy) / min(iResolution.x, iResolution.y);
+        d = max(d, smoothstep(0.05, 0.04, length(uv - m)));
+    }
+    fragColor = vec4(max(prevCol, vec3(d)), 1.0);
+}`,
+flow: `uniform float decay; // @param 0.9..1 = 0.985 step 0.001
+uniform float swirl; // @param 0..3 = 1
+uniform vec3  ink;   // @param color = #ff4080
+
+void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+    vec2 c = fragCoord / iResolution.xy - 0.5;
+    float a = swirl * 0.01 * (1.0 - length(c));
+    c = mat2(cos(a), -sin(a), sin(a), cos(a)) * c * 0.997;
+    vec3 prevCol = texture(iChannel0, c + 0.5).rgb * decay;
+    vec2 uv = (2.0 * fragCoord - iResolution.xy) / min(iResolution.x, iResolution.y);
+    vec2 p = 0.5 * vec2(cos(iTime * 1.7), sin(iTime * 2.3));
+    float d = smoothstep(0.06, 0.0, length(uv - p));
+    vec3 col = (0.5 + 0.5 * cos(iTime + vec3(0.0, 2.0, 4.0))) * ink * 2.0;
+    fragColor = vec4(max(prevCol, d * col), 1.0);
+}`,
+};
+const FEEDBACK = new Set(['trails', 'flow']);
+const PRESETS = { '1:1': [2160, 2160], '4:5': [2160, 2700], '9:16': [2160, 3840], '16:9': [3840, 2160] };
+
+// ---------------------------------------------------------------- @param parsing (subset of #6)
+function parseParams(src) {
+  const out = [];
+  for (const [, glType, name, rest] of src.matchAll(/uniform\s+(\w+)\s+(\w+)\s*;\s*\/\/\s*@param\s*(.*)/g)) {
+    const [spec, defRaw = ''] = rest.split('=').map(s => s.trim());
+    let def = defRaw, step;
+    const sm = defRaw.match(/(.*)\bstep\s+([\d.]+)/);
+    if (sm) { def = sm[1].trim(); step = +sm[2]; }
+    const p = { name, glType, step };
+    if (spec === 'color') { p.type = 'color'; p.def = def || '#000000'; }
+    else if (spec.includes('|')) { p.type = 'select'; p.options = spec.split('|'); p.def = Math.max(0, p.options.indexOf(def)); }
+    else if (glType === 'bool') { p.type = 'bool'; p.def = def === 'true'; }
+    else {
+      [p.min, p.max] = spec.split('..').map(Number);
+      if (glType === 'vec2') { p.type = 'vec2'; const [x, y] = def ? def.split(',').map(Number) : [p.min, p.min]; p.def = { x, y }; }
+      else { p.type = glType; p.def = def !== '' ? Number(def) : p.min; }
+    }
+    out.push(p);
+  }
+  return out;
+}
+const clone = v => (typeof v === 'object' ? { ...v } : v);
+const fmt = n => String(+n.toFixed(4));
+function annotation(p, v) {
+  let s;
+  switch (p.type) {
+    case 'color': s = `color = ${v}`; break;
+    case 'select': s = `${p.options.join('|')} = ${p.options[v]}`; break;
+    case 'bool': s = `= ${v}`; break;
+    case 'vec2': s = `${p.min}..${p.max} = ${fmt(v.x)}, ${fmt(v.y)}`; break;
+    default: s = `${p.min}..${p.max} = ${fmt(v)}${p.step ? ` step ${p.step}` : ''}`;
+  }
+  return `uniform ${p.glType} ${p.name}; // @param ${s}`;
+}
+
+// ---------------------------------------------------------------- sketches (fake list)
+function makeSketch(name, kind, output = 'window') {
+  const params = parseParams(SRC[kind]);
+  return { name, kind, feedback: FEEDBACK.has(kind), output, scale: 'fit', params,
+           values: Object.fromEntries(params.map(p => [p.name, clone(p.def)])) };
+}
+const SK = [
+  ['2026-09-28-flow', 'flow', '4:5'],
+  ['2026-09-27-waves', 'waves', '16:9'],
+  ['2026-09-26-trails', 'trails'],
+  ['2026-09-25', 'default'],
+  ['2026-09-24-rings', 'rings', '1:1'],
+  ['2026-09-22-soft-waves-at-dusk-over-the-harbor', 'waves'],
+  ['2026-09-21', 'default', '9:16'],
+  ['2026-09-19-dots', 'rings'],
+  ['2026-09-18-ink', 'flow'],
+  ['2026-09-17', 'default'],
+  ['2026-09-15-rings-2', 'rings', '4:5'],
+  ['2026-09-14-trails', 'trails', '1:1'],
+  ['2026-09-12', 'waves'],
+  ['2026-09-10-first', 'default'],
+].map(a => makeSketch(...a));
+
+// ---------------------------------------------------------------- state
+const url = new URLSearchParams(location.search);
+const VARIANTS = ['A', 'B', 'C'];
+const VARIANT_NAMES = { A: '3단 IDE (목록 · 캔버스 · Parameter)', B: '풀스크린 HUD (오버레이 + 팔레트)', C: '캔버스 + 단일 패널 (전부 Tweakpane)' };
+const SPEEDS = [0.1, 0.25, 0.5, 1, 2, 4];
+const S = {
+  variant: VARIANTS.includes(url.get('variant')) ? url.get('variant') : 'A',
+  cur: SK.some(s => s.name === url.get('sketch')) ? url.get('sketch') : SK[0].name,
+  paused: false, stepOnce: false, speed: 1, time: 0, frame: 0, fps: 60,
+  dprCap: 2, error: false, mouse: [0, 0, 0, 0], down: false, css: [0, 0], dpr: 1,
+};
+const cur = () => SK.find(s => s.name === S.cur);
+const $ = (q, el = document) => el.querySelector(q);
+const $$ = (q, el = document) => [...el.querySelectorAll(q)];
+
+// ---------------------------------------------------------------- WebGL2
+const canvas = document.createElement('canvas');
+const gl = canvas.getContext('webgl2', { preserveDrawingBuffer: true, antialias: false });
+if (!gl || !gl.getExtension('EXT_color_buffer_float')) {
+  document.body.textContent = '이 브라우저는 WebGL2 float 렌더 타깃을 지원하지 않습니다';
+  throw new Error('no webgl2 float');
+}
+gl.bindVertexArray(gl.createVertexArray());
+const VS = `#version 300 es
+void main() { vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2); gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0); }`;
+const PRE = `#version 300 es
+precision highp float;
+uniform vec3 iResolution; uniform float iTime; uniform float iTimeDelta; uniform int iFrame; uniform vec4 iMouse; uniform sampler2D iChannel0;
+out vec4 _out;
+`;
+const POST = `\nvoid main() { mainImage(_out, gl_FragCoord.xy); }`;
+function compile(fs) {
+  const prog = gl.createProgram();
+  for (const [type, src] of [[gl.VERTEX_SHADER, VS], [gl.FRAGMENT_SHADER, fs]]) {
+    const sh = gl.createShader(type);
+    gl.shaderSource(sh, src); gl.compileShader(sh);
+    if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(sh));
+    gl.attachShader(prog, sh);
+  }
+  gl.linkProgram(prog);
+  const cache = {};
+  return { prog, u: n => (n in cache ? cache[n] : (cache[n] = gl.getUniformLocation(prog, n))) };
+}
+const programs = Object.fromEntries(Object.keys(SRC).map(k => [k, compile(PRE + SRC[k] + POST)]));
+const blit = compile(`#version 300 es
+precision highp float;
+uniform sampler2D src; uniform vec2 dst; uniform bool clampOut; out vec4 o;
+void main() { vec4 c = texture(src, gl_FragCoord.xy / dst); o = clampOut ? clamp(c, 0.0, 1.0) : c; }`);
+
+let fb = null; // feedback ping-pong: { w, h, t: [{tex, fbo}, {tex, fbo}], i }
+function makeTarget(w, h) {
+  const tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA16F, w, h);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  const fbo = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+  gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
+  return { tex, fbo };
+}
+function freeFB() {
+  if (!fb) return;
+  for (const t of fb.t) { gl.deleteTexture(t.tex); gl.deleteFramebuffer(t.fbo); }
+  fb = null;
+}
+function drawBlit(tex, w, h, clampOut) {
+  gl.useProgram(blit.prog);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.uniform1i(blit.u('src'), 0); gl.uniform2f(blit.u('dst'), w, h); gl.uniform1i(blit.u('clampOut'), clampOut);
+  gl.viewport(0, 0, w, h); gl.drawArrays(gl.TRIANGLES, 0, 3);
+}
+// fit-mode window resize keeps feedback: linear blit old buffer into the new size (#8 결정 4)
+function ensureFB(w, h) {
+  if (fb && fb.w === w && fb.h === h) return;
+  const nb = { w, h, t: [makeTarget(w, h), makeTarget(w, h)], i: 0 };
+  if (fb) { gl.bindFramebuffer(gl.FRAMEBUFFER, nb.t[0].fbo); drawBlit(fb.t[fb.i].tex, w, h, false); }
+  freeFB(); fb = nb;
+}
+const hex2rgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16) / 255);
+
+function draw(sk, dt) {
+  const W = canvas.width, H = canvas.height, P = programs[sk.kind];
+  gl.useProgram(P.prog);
+  gl.uniform3f(P.u('iResolution'), W, H, 1);
+  gl.uniform1f(P.u('iTime'), S.time);
+  gl.uniform1f(P.u('iTimeDelta'), dt);
+  gl.uniform1i(P.u('iFrame'), S.frame);
+  gl.uniform4f(P.u('iMouse'), ...S.mouse);
+  for (const p of sk.params) {
+    const v = sk.values[p.name], l = P.u(p.name);
+    if (p.type === 'float') gl.uniform1f(l, v);
+    else if (p.type === 'int' || p.type === 'select') gl.uniform1i(l, v);
+    else if (p.type === 'bool') gl.uniform1i(l, v ? 1 : 0);
+    else if (p.type === 'color') gl.uniform3f(l, ...hex2rgb(v));
+    else if (p.type === 'vec2') gl.uniform2f(l, v.x, v.y);
+  }
+  if (sk.feedback) {
+    ensureFB(W, H);
+    const src = fb.t[fb.i], dst = fb.t[1 - fb.i];
+    gl.useProgram(P.prog);
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, src.tex);
+    gl.uniform1i(P.u('iChannel0'), 0);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, dst.fbo);
+    gl.viewport(0, 0, W, H); gl.drawArrays(gl.TRIANGLES, 0, 3);
+    fb.i = 1 - fb.i;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    drawBlit(dst.tex, W, H, true);
+  } else {
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(0, 0, W, H); gl.drawArrays(gl.TRIANGLES, 0, 3);
+  }
+}
+
+let last = performance.now();
+function loop(now) {
+  const dt = Math.min(0.1, (now - last) / 1000); last = now;
+  S.fps += (1 / Math.max(dt, 1e-3) - S.fps) * 0.05;
+  const sk = cur();
+  const advance = !S.paused || S.stepOnce;
+  const step = S.stepOnce ? 1 / 60 : dt;
+  if (advance) S.time += step * S.speed;
+  // paused: plain sketches keep redrawing (live Parameter edits), feedback sketches freeze
+  if (advance || !sk.feedback) draw(sk, advance ? step * S.speed : 0);
+  if (advance) S.frame++;
+  S.stepOnce = false;
+  requestAnimationFrame(loop);
+}
+
+// ---------------------------------------------------------------- canvas sizing (Output size + letterbox)
+let stage = null;
+const ro = new ResizeObserver(() => layout());
+function layout() {
+  if (!stage) return;
+  const sk = cur(), r = stage.getBoundingClientRect();
+  let cw = r.width, ch = r.height;
+  if (sk.output !== 'window') {
+    const [W, H] = PRESETS[sk.output], pad = 16;
+    const aw = r.width - 2 * pad, ah = r.height - 2 * pad, a = W / H;
+    if (aw / ah > a) { ch = ah; cw = ah * a; } else { cw = aw; ch = aw / a; }
+  }
+  cw = Math.max(1, Math.floor(cw)); ch = Math.max(1, Math.floor(ch));
+  const dpr = Math.min(devicePixelRatio, S.dprCap);
+  const [pw, ph] = sk.output !== 'window' && sk.scale === 'full'
+    ? PRESETS[sk.output] : [Math.round(cw * dpr), Math.round(ch * dpr)];
+  canvas.style.width = cw + 'px'; canvas.style.height = ch + 'px';
+  if (canvas.width !== pw || canvas.height !== ph) { canvas.width = pw; canvas.height = ph; }
+  S.css = [cw, ch]; S.dpr = dpr;
+}
+function mountCanvas() {
+  stage = $('[data-stage]');
+  stage.prepend(canvas);
+  ro.disconnect(); ro.observe(stage);
+  layout();
+}
+function canvasPx(e) {
+  const r = canvas.getBoundingClientRect();
+  return [(e.clientX - r.left) / r.width * canvas.width, (r.bottom - e.clientY) / r.height * canvas.height];
+}
+canvas.addEventListener('pointerdown', e => { const [x, y] = canvasPx(e); S.mouse = [x, y, x, y]; S.down = true; canvas.setPointerCapture(e.pointerId); });
+canvas.addEventListener('pointermove', e => { if (S.down) [S.mouse[0], S.mouse[1]] = canvasPx(e); });
+canvas.addEventListener('pointerup', () => { S.down = false; S.mouse[2] = -Math.abs(S.mouse[2]); S.mouse[3] = -Math.abs(S.mouse[3]); });
+
+// ---------------------------------------------------------------- actions
+function reset() { S.time = 0; S.frame = 0; freeFB(); }
+function setOutput(v) { const sk = cur(); sk.output = v; if (v === 'window') sk.scale = 'fit'; reset(); layout(); refreshPanes(); }
+function setScale(v) { const sk = cur(); if (sk.output === 'window') return; sk.scale = v; reset(); layout(); refreshPanes(); }
+function setDprCap(v) { S.dprCap = v; layout(); }
+function setSpeed(v) { S.speed = v; refreshPanes(); }
+function switchSketch(name) {
+  if (!SK.some(s => s.name === name) || name === S.cur) return;
+  S.cur = name; reset(); syncUrl(); render();
+}
+function stepSketch(d) { const i = SK.findIndex(s => s.name === S.cur); switchSketch(SK[(i + d + SK.length) % SK.length].name); }
+function outputBlock() {
+  const sk = cur();
+  if (sk.output === 'window') return 'Output size가 window라 화면 Capture(C)와 같습니다';
+  if (sk.feedback && sk.scale === 'fit') return 'Feedback Sketch는 render scale을 full로 바꿔야 Output size Capture가 됩니다 (ADR-0001)';
+  return null;
+}
+function capture(kind) {
+  const sk = cur();
+  if (kind === 'output') { const why = outputBlock(); if (why) { toast('⛔ ' + why); return; } }
+  const [W, H] = kind === 'output' ? PRESETS[sk.output] : [canvas.width, canvas.height];
+  const d = new Date(), p2 = n => String(n).padStart(2, '0');
+  const ts = `${d.getFullYear()}${p2(d.getMonth() + 1)}${p2(d.getDate())}-${p2(d.getHours())}${p2(d.getMinutes())}${p2(d.getSeconds())}`;
+  const how = kind === 'output' && !sk.feedback ? 'Output size 재렌더' : kind === 'output' ? 'full 프레임 그대로' : '화면 그대로';
+  $('#flash').classList.remove('go'); void $('#flash').offsetWidth; $('#flash').classList.add('go');
+  toast(`<img src="${canvas.toDataURL()}"><div><b>${how}</b> <span class="dim">(시뮬)</span><br><span class="mono">captures/${sk.name}/${sk.name}_${ts}_${W}x${H}.png</span></div>`);
+}
+function copyValues() {
+  const sk = cur(), text = sk.params.map(p => annotation(p, sk.values[p.name])).join('\n');
+  navigator.clipboard?.writeText(text).catch(() => {});
+  toast(`현재 값 복사됨<br><pre class="mono" style="margin:4px 0 0">${text.replace(/</g, '&lt;')}</pre>`);
+}
+function resetValues() { const sk = cur(); for (const p of sk.params) sk.values[p.name] = clone(p.def); refreshPanes(); }
+function newSketch() {
+  const d = new Date(), p2 = n => String(n).padStart(2, '0');
+  const base = `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`;
+  let name = base, n = 2;
+  while (SK.some(s => s.name === name)) name = `${base}-${n++}`;
+  SK.unshift(makeSketch(name, 'default'));
+  SK.sort((a, b) => b.name.localeCompare(a.name));
+  toast(`새 Sketch 감지 → <b>${name}</b>로 전환 (#12)`);
+  switchSketch(name);
+}
+const A = {
+  togglePause: () => { S.paused = !S.paused; },
+  reset, step: () => { if (S.paused) S.stepOnce = true; else toast('프레임 진행은 일시정지 중에만 (Space)'); },
+  speedDown: () => setSpeed(SPEEDS[Math.max(0, SPEEDS.findIndex(s => s >= S.speed) - 1)]),
+  speedUp: () => setSpeed(SPEEDS[Math.min(SPEEDS.length - 1, SPEEDS.findIndex(s => s > S.speed))] ?? S.speed),
+  speedOne: () => setSpeed(1),
+  capture: () => capture('screen'), captureOutput: () => capture('output'),
+  prevSketch: () => stepSketch(-1), nextSketch: () => stepSketch(1),
+  toggleUI: () => { document.body.classList.toggle('ui-hidden'); layout(); },
+  simError: () => { S.error = !S.error; },
+  palette: () => openPalette(), newSketch, help: () => { $('#help').hidden = !$('#help').hidden; },
+};
+
+// ---------------------------------------------------------------- toasts, palette
+function toast(html) {
+  const el = document.createElement('div');
+  el.className = 'toast'; el.innerHTML = html;
+  $('#toasts').append(el); setTimeout(() => el.remove(), 4000);
+}
+const badges = s => (s.feedback ? '<i class="fb">feedback</i>' : '') + `<i>${s.output}</i>`;
+const listHTML = (filter = '') => SK.filter(s => s.name.includes(filter))
+  .map(s => `<li data-sketch="${s.name}" class="${s.name === S.cur ? 'on' : ''}"><span>${s.name}</span><span class="badges">${badges(s)}</span></li>`).join('');
+let palSel = 0;
+function renderPalette() {
+  $('#palList').innerHTML = listHTML($('#palInput').value.trim());
+  const items = $$('#palList li'); palSel = Math.min(palSel, items.length - 1);
+  items[palSel]?.classList.add('sel'); items[palSel]?.scrollIntoView({ block: 'nearest' });
+}
+function openPalette() { $('#palette').hidden = false; $('#palInput').value = ''; palSel = 0; renderPalette(); $('#palInput').focus(); }
+function closePalette() { $('#palette').hidden = true; }
+$('#palInput').addEventListener('input', () => { palSel = 0; renderPalette(); });
+$('#palInput').addEventListener('keydown', e => {
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); palSel = Math.max(0, palSel + (e.key === 'ArrowDown' ? 1 : -1)); renderPalette(); }
+  else if (e.key === 'Enter') { const li = $$('#palList li')[palSel]; closePalette(); if (li) switchSketch(li.dataset.sketch); }
+  else if (e.key === 'Escape') closePalette();
+  e.stopPropagation();
+});
+$('#palette').addEventListener('click', e => { if (e.target.id === 'palette') closePalette(); });
+
+// ---------------------------------------------------------------- Tweakpane helpers
+let panes = [], tpCapture = null, tpPause = null;
+function refreshPanes() { panes.forEach(p => p.refresh()); }
+function addParams(c) {
+  const sk = cur();
+  if (!sk.params.length) c.addBlade({ view: 'text', label: '', parse: v => v, value: '(Parameter 없음)', disabled: true });
+  for (const p of sk.params) {
+    const o = { label: p.name };
+    if (p.type === 'float') Object.assign(o, { min: p.min, max: p.max, step: p.step });
+    if (p.type === 'int') Object.assign(o, { min: p.min, max: p.max, step: 1 });
+    if (p.type === 'select') o.options = Object.fromEntries(p.options.map((n, i) => [n, i]));
+    if (p.type === 'vec2') Object.assign(o, { x: { min: p.min, max: p.max }, y: { min: p.min, max: p.max, inverted: true }, picker: 'inline', expanded: true });
+    c.addBinding(sk.values, p.name, o);
+  }
+  c.addButton({ title: '기본값으로' }).on('click', resetValues);
+  c.addButton({ title: '현재 값 복사' }).on('click', copyValues);
+}
+const O = { // proxy so Tweakpane can bind playback / output state
+  get output() { return cur().output; }, set output(v) { setOutput(v); },
+  get scale() { return cur().scale; }, set scale(v) { setScale(v); },
+  get dprCap() { return S.dprCap; }, set dprCap(v) { setDprCap(v); },
+  get speed() { return S.speed; }, set speed(v) { S.speed = v; },
+  get sketch() { return S.cur; }, set sketch(v) { setTimeout(() => switchSketch(v)); },
+};
+const ST = { clock: '', res: '', fps: 60 };
+const OUTPUT_OPTS = Object.fromEntries(['window', ...Object.keys(PRESETS)].map(k => [k === 'window' ? 'window' : `${k}  ${PRESETS[k].join('×')}`, k]));
+const DPR_OPTS = { '1': 1, '1.5': 1.5, '2': 2, '없음': 99 };
+function addOutputFolder(c) {
+  c.addBinding(O, 'output', { label: 'Output size', options: OUTPUT_OPTS });
+  c.addBinding(O, 'scale', { label: 'render scale', options: { fit: 'fit', full: 'full' }, disabled: cur().output === 'window' });
+  c.addBinding(O, 'dprCap', { label: 'DPR 상한', options: DPR_OPTS });
+  c.addBinding(ST, 'res', { label: 'iResolution', readonly: true });
+}
+
+// ---------------------------------------------------------------- HTML snippets
+const transportHTML = () => `
+  <button data-act="togglePause" data-bind="pauseIcon" title="Space"></button>
+  <button data-act="reset" title="R — 리셋">↺</button>
+  <button data-act="step" title=". — 한 프레임">⏭</button>
+  <span style="display:inline-flex;gap:2px;align-items:center"><button data-act="speedDown" title="-">−</button><span class="mono" data-bind="speed" style="min-width:36px;text-align:center"></span><button data-act="speedUp" title="=">+</button></span>
+  <span class="mono dim" data-bind="clock"></span>`;
+const captureHTML = () => `
+  <button data-act="capture" title="C — 화면 그대로">📷 화면</button>
+  <button data-act="captureOutput" title="Shift+C">📷 <span data-bind="outputLabel"></span></button>`;
+const outputHTML = () => `
+  <label>Output <select data-model="output">${Object.entries(OUTPUT_OPTS).map(([l, v]) => `<option value="${v}">${l}</option>`).join('')}</select></label>
+  <label>render <select data-model="scale"><option>fit</option><option>full</option></select></label>
+  <label>DPR 상한 <select data-model="dprCap">${Object.entries(DPR_OPTS).map(([l, v]) => `<option value="${v}">${l}</option>`).join('')}</select></label>`;
+
+// ---------------------------------------------------------------- variants
+const VIEWS = {
+  A() {
+    $('#app').innerHTML = `<div class="A">
+      <aside class="A-side">
+        <div class="A-title"><span>Sketches</span><span>${SK.length}</span></div>
+        <input data-filter placeholder="필터…">
+        <ul class="list" data-list></ul>
+        <div class="A-foot">[ ] 이전·다음 · ? 단축키</div>
+      </aside>
+      <section class="A-center">
+        <div class="A-head"><b data-bind="sketch"></b><span class="badges" data-bind="badges"></span><span class="grow"></span>${outputHTML()}</div>
+        <div class="stage" data-stage><pre class="err err-A" data-err hidden></pre></div>
+        <div class="A-bar">${transportHTML()}<span class="grow"></span><span class="mono dim" data-bind="res"></span>${captureHTML()}</div>
+      </section>
+      <aside class="A-params"><div data-pane></div></aside>
+    </div>`;
+    const pane = new Pane({ container: $('[data-pane]'), title: 'Parameters' });
+    addParams(pane); panes.push(pane);
+    const renderList = () => { $('[data-list]').innerHTML = listHTML($('[data-filter]').value.trim()); $('[data-list] .on')?.scrollIntoView({ block: 'nearest' }); };
+    $('[data-filter]').addEventListener('input', renderList);
+    renderList();
+  },
+  B() {
+    $('#app').innerHTML = `<div class="B">
+      <div class="stage" data-stage></div>
+      <div class="hud B-tl"><button class="B-name glass" data-act="palette" title="⌘K / /"><b data-bind="sketch"></b> ▾</button><span class="badges" data-bind="badges"></span></div>
+      <pre class="err err-B" data-err hidden></pre>
+      <div class="hud B-tr" data-pane></div>
+      <div class="hud B-bar glass">${transportHTML()}<span class="sep"></span>${captureHTML()}</div>
+      <div class="hud B-hint">H UI 숨김 · ⌘K 팔레트 · ? 단축키 · 마우스를 멈추면 UI가 사라짐</div>
+    </div>`;
+    const pane = new Pane({ container: $('[data-pane]'), title: 'Parameters' });
+    addParams(pane);
+    addOutputFolder(pane.addFolder({ title: 'Output', expanded: false }));
+    panes.push(pane);
+    const root = $('.B'); let t;
+    const wake = () => { root.classList.remove('idle'); clearTimeout(t); t = setTimeout(() => root.classList.add('idle'), 2500); };
+    root.addEventListener('pointermove', wake); wake();
+  },
+  C() {
+    $('#app').innerHTML = `<div class="C">
+      <div class="stage" data-stage></div>
+      <aside class="C-side"><pre class="err err-C" data-err hidden></pre><div data-pane></div></aside>
+    </div>`;
+    const pane = new Pane({ container: $('[data-pane]') });
+    pane.addBinding(O, 'sketch', { label: 'Sketch', options: Object.fromEntries(SK.map(s => [s.name + (s.feedback ? ' ⟲' : ''), s.name])) });
+    pane.addBlade({ view: 'separator' });
+    const play = pane.addFolder({ title: 'Playback' });
+    tpPause = play.addButton({ title: '', label: 'Space' }).on('click', A.togglePause);
+    play.addButton({ title: '↺ 리셋', label: 'R' }).on('click', reset);
+    play.addButton({ title: '⏭ 한 프레임', label: '.' }).on('click', A.step);
+    play.addBinding(O, 'speed', { label: 'speed', min: 0.1, max: 4, step: 0.05 });
+    play.addBinding(ST, 'clock', { label: 'time', readonly: true });
+    play.addBinding(ST, 'fps', { label: 'fps', readonly: true, view: 'graph', min: 0, max: 144 });
+    addOutputFolder(pane.addFolder({ title: 'Output', expanded: false }));
+    const cap = pane.addFolder({ title: 'Capture' });
+    cap.addButton({ title: '📷 화면', label: 'C' }).on('click', A.capture);
+    tpCapture = cap.addButton({ title: '📷 Output size', label: '⇧C' }).on('click', A.captureOutput);
+    addParams(pane.addFolder({ title: 'Parameters' }));
+    panes.push(pane);
+  },
+};
+
+function render() {
+  panes.forEach(p => p.dispose()); panes = []; tpCapture = tpPause = null;
+  VIEWS[S.variant]();
+  $('#swLabel').textContent = `${S.variant} — ${VARIANT_NAMES[S.variant]}`;
+  mountCanvas(); tick();
+}
+function syncUrl() {
+  const u = new URL(location.href);
+  u.searchParams.set('variant', S.variant); u.searchParams.set('sketch', S.cur);
+  history.replaceState(null, '', u);
+}
+function setVariant(d) {
+  S.variant = VARIANTS[(VARIANTS.indexOf(S.variant) + d + VARIANTS.length) % VARIANTS.length];
+  document.body.classList.remove('ui-hidden');
+  syncUrl(); render();
+}
+
+// ---------------------------------------------------------------- status binding (10 Hz)
+function tick() {
+  const sk = cur(), block = outputBlock();
+  document.body.classList.toggle('paused', S.paused);
+  ST.clock = `t ${S.time.toFixed(2)}s · f ${S.frame}`;
+  ST.fps = Math.round(S.fps);
+  ST.res = `${canvas.width}×${canvas.height}` + (sk.output !== 'window' && sk.scale === 'full' ? ' (full)' : ` (css ${S.css[0]}×${S.css[1]} @${S.dpr}x)`);
+  const B = {
+    sketch: sk.name, badges: badges(sk), speed: `${+S.speed.toFixed(2)}×`, pauseIcon: S.paused ? '▶' : '⏸',
+    clock: `${ST.clock} · ${ST.fps}fps`, res: ST.res,
+    outputLabel: sk.output === 'window' ? 'Output' : PRESETS[sk.output].join('×'),
+  };
+  for (const el of $$('[data-bind]')) { const v = B[el.dataset.bind]; if (v !== undefined && el.innerHTML !== v) el.innerHTML = v; }
+  for (const el of $$('[data-model]')) {
+    if (document.activeElement === el) continue;
+    el.value = String({ output: sk.output, scale: sk.scale, dprCap: S.dprCap }[el.dataset.model]);
+    if (el.dataset.model === 'scale') el.disabled = sk.output === 'window';
+  }
+  for (const el of $$('[data-act="captureOutput"]')) { el.disabled = !!block; el.title = block ?? 'Shift+C — Output size로 저장'; }
+  if (tpCapture) tpCapture.disabled = !!block;
+  if (tpPause) tpPause.title = S.paused ? '▶ 재생' : '⏸ 일시정지';
+  for (const el of $$('[data-err]')) {
+    el.hidden = !S.error;
+    el.textContent = `ERROR  ${sk.name}/main.frag:7:23  'colr' : undeclared identifier\n    vec3 col = colr * 0.5;\n                         ^\n마지막으로 성공한 버전이 계속 실행 중 · 저장하면 다시 컴파일`;
+  }
+}
+setInterval(tick, 100);
+
+// ---------------------------------------------------------------- input
+document.addEventListener('click', e => {
+  const act = e.target.closest('[data-act]'); if (act && !act.disabled) { A[act.dataset.act](); tick(); return; }
+  const li = e.target.closest('[data-sketch]'); if (li) { closePalette(); switchSketch(li.dataset.sketch); return; }
+  const sw = e.target.closest('[data-sw]'); if (sw) setVariant(+sw.dataset.sw);
+});
+document.addEventListener('change', e => {
+  const m = e.target.dataset?.model; if (!m) return;
+  ({ output: setOutput, scale: setScale, dprCap: v => setDprCap(+v) })[m](e.target.value);
+  e.target.blur();
+});
+addEventListener('keydown', e => {
+  if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); openPalette(); return; }
+  if (e.target.closest?.('input, textarea, select, [contenteditable]')) { if (e.key === 'Escape') e.target.blur(); return; }
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  const map = {
+    ' ': 'togglePause', r: 'reset', '.': 'step', '-': 'speedDown', '=': 'speedUp', '+': 'speedUp', 0: 'speedOne',
+    c: 'capture', C: 'captureOutput', '[': 'prevSketch', ']': 'nextSketch', h: 'toggleUI', '/': 'palette',
+    e: 'simError', n: 'newSketch', '?': 'help',
+  };
+  if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { setVariant(e.key === 'ArrowLeft' ? -1 : 1); return; }
+  if (e.key === 'Escape') { $('#help').hidden = true; closePalette(); return; }
+  const act = map[e.key]; if (!act) return;
+  e.preventDefault(); A[act](); tick();
+});
+
+syncUrl(); render();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
