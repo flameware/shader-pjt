@@ -135,6 +135,15 @@ describe('engine', () => {
     expect(states).toEqual([false, true, false, true, false]);
   });
 
+  it('hasFeedback: whether any Pass the graph runs reads a previous frame (the feedback badge)', () => {
+    const engine = createEngine(fakeRenderer().renderer, createClock());
+    expect(engine.hasFeedback()).toBe(false);
+    engine.setGraph(feedbackGraph);
+    expect(engine.hasFeedback()).toBe(true);
+    engine.setGraph(graph);
+    expect(engine.hasFeedback()).toBe(false);
+  });
+
   it('frame() reports the time it used, for the play bar', () => {
     const engine = createEngine(fakeRenderer().renderer, createClock());
     engine.frame(1000, size);

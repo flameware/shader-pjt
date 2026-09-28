@@ -38,6 +38,8 @@ export interface Engine {
    * caller should then leave the canvas alone (resizing it would clear the held picture).
    */
   isFrozen(): boolean;
+  /** Whether the running graph is a Feedback Sketch: some Pass it runs is read with `prev()`. */
+  hasFeedback(): boolean;
   /**
    * Advances the clock and draws the frame at `nowMs` (a `requestAnimationFrame` timestamp);
    * returns the time it drew with. While paused, a Sketch without Feedback keeps redrawing the
@@ -63,6 +65,7 @@ export function createEngine(renderer: Renderer, clock: Clock): Engine {
     },
     playback: clock,
     isFrozen: () => feedback && !clock.willAdvance(),
+    hasFeedback: () => feedback,
     frame(nowMs, size) {
       const tick = clock.tick(nowMs);
       if (tick.advanced || !feedback) renderer.draw({ ...tick, ...size });
