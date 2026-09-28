@@ -54,6 +54,16 @@ describe('engine', () => {
     expect(fake.frames.at(-1)).toMatchObject({ frame: 0, time: 0 });
   });
 
+  it('a new render size alone (a fit resize) keeps time, iFrame and Feedback', () => {
+    const fake = fakeRenderer();
+    const engine = createEngine(fake.renderer, createClock());
+    engine.setGraph(feedbackGraph);
+    engine.frame(1000, size);
+    engine.frame(1016, { ...size, width: 8, height: 6 });
+    expect(fake.clears()).toBe(0);
+    expect(fake.frames.at(-1)).toMatchObject({ frame: 1, time: 0.016, width: 8, height: 6 });
+  });
+
   it('starts time over when the pass graph is rebuilt', () => {
     const fake = fakeRenderer();
     const engine = createEngine(fake.renderer, createClock());

@@ -6,7 +6,9 @@ import { createClock } from './engine/clock';
 import { createEngine } from './engine/engine';
 import { createMouse, toRenderPixel } from './engine/mouse';
 import { createRenderer } from './engine/renderer';
-import { renderSize } from './engine/render-size';
+import { canvasLayout } from './output/layout';
+import { placeCanvas } from './output/place-canvas';
+import { createOutputSettings } from './output/settings';
 import { UNSUPPORTED_MESSAGE, hasFloatLinear, missingRequiredFeature } from './gl/features';
 import { parameterPassOrder } from './params/merge';
 import { createPassPipeline } from './params/pipeline';
@@ -19,6 +21,8 @@ import { mountBanner } from './ui/banner';
 import { mountParameterPanel } from './ui/parameter-panel';
 import { bannerView } from './ui/banner-view';
 import { mountBrowserUi } from './ui/browser-ui';
+import { mountOutputBadge } from './ui/output-badge';
+import { mountOutputFolder } from './ui/output-folder';
 
 // Vite needs literal globs. Every .frag is listed (subfolder ones only to warn about them); a
 // module is only fetched when its Sketch is opened. Adding, removing or renaming a .frag or a
@@ -81,7 +85,14 @@ async function start(): Promise<void> {
 
   // Parameters (#19): values per Sketch in localStorage, controls in the Tweakpane panel.
   const parameters = createParameterValues(name, browserStorage());
-  mountParameterPanel(ui.hud.topRight, parameters);
+  const panel = mountParameterPanel(ui.hud.topRight, parameters);
+
+  // Output size and render scale (#22), per Sketch in localStorage. Changing either changes the
+  // composition, so the Sketch resets and its buffers are reallocated at the new size (ADR-0001).
+  const output = createOutputSettings(name, browserStorage(), built.graph?.output);
+  output.subscribe(() => engine.reset());
+  mountOutputFolder(panel.pane, output, () => [canvas.width, canvas.height]);
+  mountOutputBadge(ui.hud.topLeft, output);
 
   // Every Pass compiles, including ones that don't run, so their errors show too. Include and
   // Parameter errors block a Pass's new version like a compile failure does.
@@ -118,8 +129,16 @@ async function start(): Promise<void> {
   canvas.addEventListener('pointercancel', (e) => e.isPrimary && mouse.release());
 
   const frame = (now: number) => {
-    const [width, height] = renderSize(canvas.clientWidth, canvas.clientHeight, devicePixelRatio);
-    // A paused Feedback Sketch isn't redrawn, so resizing would blank it; CSS stretches it meanwhile.
+    const layout = canvasLayout({
+      viewport: [innerWidth, innerHeight],
+      dpr: devicePixelRatio,
+      output: output.output(),
+      renderScale: output.renderScale(),
+    });
+    placeCanvas(canvas, layout.css, output.output() !== 'window');
+    const [width, height] = layout.render;
+    // A paused Feedback Sketch isn't redrawn, so resizing would blank it; CSS stretches it
+    // meanwhile. On play, the new size resamples the buffers, so the Feedback carries on.
     if ((canvas.width !== width || canvas.height !== height) && !engine.isFrozen()) {
       canvas.width = width;
       canvas.height = height;

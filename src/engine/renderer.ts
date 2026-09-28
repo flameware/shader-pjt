@@ -1,5 +1,5 @@
 import { compileProgram, drawFullscreen } from '../gl/program';
-import { type Target, clearTarget, createBlankTexture, createTarget, deleteTarget } from '../gl/target';
+import { type Target, createBlankTexture, createTarget, deleteTarget, resampleTarget } from '../gl/target';
 import type { ShaderSource } from '../shader-source';
 import { MAX_CHANNELS, type PassGraph, type PassNode } from '../sketch/graph';
 import { type Slots, bufferSize, createSlots } from './buffers';
@@ -9,7 +9,7 @@ import { type ActiveUniform, type UniformLocations, parameterUniforms, setParame
 import { wrapMainImage } from './wrap';
 
 export interface FrameInputs extends FrameTime {
-  /** Canvas size in device pixels. */
+  /** The render size (working resolution) in device pixels: the canvas size, and `iResolution` of `main`. */
   width: number;
   height: number;
   mouse: readonly [number, number, number, number];
@@ -34,7 +34,7 @@ interface PassBuffer {
 
 /**
  * Shows the Main pass's float Feedback buffer on the canvas, clamped to 0..1 (#5). The buffer is
- * canvas-sized, so it is read texel for texel.
+ * render-sized like the canvas, so it is read texel for texel.
  */
 const PRESENT_SHADER = `#version 300 es
 precision highp float;
@@ -62,8 +62,17 @@ export interface Renderer {
   setGraph(graph: PassGraph | null): void;
   /** True when there is a graph and every Pass it runs has compiled; until then `draw` leaves the canvas as is. */
   isRunning(): boolean;
-  /** Clears every buffer to 0, so Feedback starts over (part of the engine's reset). */
+  /**
+   * Empties every buffer, so Feedback starts over (part of the engine's reset). They are
+   * reallocated, zero-filled, at the next `draw`'s size: this is also how a new Output size or
+   * render scale gets fresh buffers (ADR-0001).
+   */
   clearBuffers(): void;
+  /**
+   * Runs the graph at `frame.width × frame.height`. When that size differs from the last draw
+   * (a window resize under `fit`), each buffer is resampled into its new size, so Feedback
+   * carries on instead of starting over (#8 decision 4).
+   */
   draw(frame: FrameInputs): void;
 }
 
@@ -83,29 +92,62 @@ export function createRenderer(gl: WebGL2RenderingContext): Renderer {
     buffers = new Map();
   };
 
-  /** (Re)allocates a buffer when it has none yet or the canvas size changed its size. Reallocation clears it. */
-  const fitBuffer = (buffer: PassBuffer, canvasWidth: number, canvasHeight: number) => {
-    const [width, height] = bufferSize(buffer.node.buffer.size, canvasWidth, canvasHeight);
+  /**
+   * Gives a buffer its size for this render size: allocated (zero-filled) when it has none,
+   * resampled from its old contents when the size changed, untouched otherwise.
+   */
+  const fitBuffer = (buffer: PassBuffer, renderWidth: number, renderHeight: number) => {
+    const [width, height] = bufferSize(buffer.node.buffer.size, renderWidth, renderHeight);
     const [first] = buffer.targets;
     if (first && first.width === width && first.height === height) return;
-    for (const target of buffer.targets) deleteTarget(gl, target);
     const count = buffer.node.feedback ? 2 : 1;
-    buffer.targets = Array.from({ length: count }, () => createTarget(gl, buffer.node.buffer, width, height));
+    buffer.targets =
+      buffer.targets.length === count
+        ? buffer.targets.map((target) => resampleTarget(gl, target, buffer.node.buffer, width, height))
+        : Array.from({ length: count }, () => createTarget(gl, buffer.node.buffer, width, height));
   };
 
-  const bindChannels = (node: PassNode, uniforms: UniformLocations) => {
+  const bindChannels = (node: PassNode, uniforms: UniformLocations, passBuffers: Map<string, PassBuffer>) => {
     const resolutions = new Float32Array(3 * MAX_CHANNELS);
     // Every unit is rebound each Pass, so a texture left bound from an earlier Pass can never be
     // this Pass's own draw target (a feedback loop WebGL refuses to draw).
     for (let unit = 0; unit < MAX_CHANNELS; unit++) {
       const channel = node.channels[unit];
-      const source = channel && buffers.get(channel.pass);
+      const source = channel && passBuffers.get(channel.pass);
       const target = source && source.targets[channel.prev ? source.slots.previous() : source.slots.current()];
       gl.activeTexture(gl.TEXTURE0 + unit);
       gl.bindTexture(gl.TEXTURE_2D, target?.texture ?? blank);
       if (target) resolutions.set([target.width, target.height, 1], unit * 3);
     }
     gl.uniform3fv(uniforms.iChannelResolution, resolutions);
+  };
+
+  /**
+   * Runs every Pass of `current` once, each into its buffer in `passBuffers` (sized already), and
+   * `main` to the canvas when it has no buffer. Taking the buffers as an argument leaves room for
+   * an off-screen run at another size (Output size Capture, #24) that never touches the live ones.
+   */
+  const runPasses = (current: PassGraph, frame: FrameInputs, passBuffers: Map<string, PassBuffer>) => {
+    for (const name of current.order) {
+      const node = current.passes[name]!;
+      const { program, uniforms: u, parameters } = programs.get(name)!;
+      const buffer = passBuffers.get(name);
+      const target = buffer?.targets[buffer.slots.write()];
+      const [width, height] = target ? [target.width, target.height] : [frame.width, frame.height];
+
+      gl.bindFramebuffer(gl.FRAMEBUFFER, target?.framebuffer ?? null);
+      gl.viewport(0, 0, width, height);
+      gl.useProgram(program);
+      gl.uniform3f(u.iResolution, width, height, 1);
+      gl.uniform1f(u.iTime, frame.time);
+      gl.uniform1f(u.iTimeDelta, frame.timeDelta);
+      gl.uniform1i(u.iFrame, frame.frame);
+      gl.uniform4f(u.iMouse, ...frame.mouse);
+      setParameterUniforms(gl, parameters, frame.parameters ?? []);
+      bindChannels(node, u, passBuffers);
+      drawFullscreen(gl);
+      buffer?.slots.written();
+    }
   };
 
   const isRunning = () => graph !== null && graph.order.every((name) => programs.has(name));
@@ -144,7 +186,10 @@ export function createRenderer(gl: WebGL2RenderingContext): Renderer {
     isRunning,
 
     clearBuffers() {
-      for (const buffer of buffers.values()) for (const target of buffer.targets) clearTarget(gl, target);
+      for (const buffer of buffers.values()) {
+        for (const target of buffer.targets) deleteTarget(gl, target);
+        buffer.targets = [];
+      }
     },
 
     draw(frame) {
@@ -154,26 +199,7 @@ export function createRenderer(gl: WebGL2RenderingContext): Renderer {
         buffer.slots.beginFrame();
       }
 
-      for (const name of graph.order) {
-        const node = graph.passes[name]!;
-        const { program, uniforms: u, parameters } = programs.get(name)!;
-        const buffer = buffers.get(name);
-        const target = buffer?.targets[buffer.slots.write()];
-        const [width, height] = target ? [target.width, target.height] : [frame.width, frame.height];
-
-        gl.bindFramebuffer(gl.FRAMEBUFFER, target?.framebuffer ?? null);
-        gl.viewport(0, 0, width, height);
-        gl.useProgram(program);
-        gl.uniform3f(u.iResolution, width, height, 1);
-        gl.uniform1f(u.iTime, frame.time);
-        gl.uniform1f(u.iTimeDelta, frame.timeDelta);
-        gl.uniform1i(u.iFrame, frame.frame);
-        gl.uniform4f(u.iMouse, ...frame.mouse);
-        setParameterUniforms(gl, parameters, frame.parameters ?? []);
-        bindChannels(node, u);
-        drawFullscreen(gl);
-        buffer?.slots.written();
-      }
+      runPasses(graph, frame, buffers);
 
       const main = buffers.get('main');
       if (main) {
