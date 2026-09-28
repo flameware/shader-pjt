@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import type { BufferSize, PassGraph, PassNode } from '../sketch/graph';
 import { createClock } from '../engine/clock';
 import { createEngine } from '../engine/engine';
 import type { CaptureRenderer, FrameInputs, MainImage, OffscreenResult } from '../engine/renderer';
@@ -7,9 +6,7 @@ import {
   type OutputAvailability,
   outputCaptureAvailability,
   outputFrame,
-  outputTargetSizes,
   scaleMouse,
-  sizeLimitProblem,
   takeOutputCapture,
 } from './output-capture';
 
@@ -79,47 +76,6 @@ describe('outputCaptureAvailability', () => {
       expect(result.ok).toBe(false);
       expect(!result.ok && result.reason).toMatch(/window/);
     }
-  });
-});
-
-describe('outputTargetSizes', () => {
-  const node = (name: string, size: BufferSize): PassNode => ({
-    name,
-    file: `sketches/s/${name}.frag`,
-    channels: [],
-    buffer: { format: 'rgba16f', filter: 'linear', wrap: 'clamp', size },
-    feedback: false,
-  });
-  const graph: PassGraph = {
-    passes: {
-      blur: node('blur', { scale: 0.5 }),
-      lut: node('lut', { size: [256, 16] }),
-      unused: node('unused', { scale: 4 }),
-      main: node('main', { scale: 1 }),
-    },
-    order: ['blur', 'lut', 'main'],
-  };
-
-  it('recomputes scale against the Output size and keeps a fixed size, for every Pass that runs', () => {
-    expect(outputTargetSizes(graph, [2160, 2700])).toEqual([
-      [1080, 1350],
-      [256, 16],
-      [2160, 2700],
-    ]);
-  });
-});
-
-describe('sizeLimitProblem', () => {
-  const limits = { maxTextureSize: 4096, maxRenderbufferSize: 8192, maxViewportDims: [8192, 3000] as const };
-
-  it('passes sizes within every limit', () => {
-    expect(sizeLimitProblem([[4096, 3000], [16, 16]], limits)).toBeNull();
-  });
-
-  it('names the size and the limit it exceeds', () => {
-    expect(sizeLimitProblem([[4097, 100]], limits)).toMatch(/4097×100.*MAX_TEXTURE_SIZE 4096/);
-    expect(sizeLimitProblem([[100, 3001]], limits)).toMatch(/100×3001.*MAX_VIEWPORT_DIMS 8192×3000/);
-    expect(sizeLimitProblem([[100, 100]], { ...limits, maxRenderbufferSize: 64 })).toMatch(/MAX_RENDERBUFFER_SIZE 64/);
   });
 });
 

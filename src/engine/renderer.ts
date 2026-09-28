@@ -1,9 +1,9 @@
-import { glSizeLimits, outputTargetSizes, sizeLimitProblem } from '../capture/output-capture';
+import { glSizeLimits, sizeLimitProblem } from '../gl/limits';
 import { compileProgram, drawFullscreen } from '../gl/program';
 import { type Target, createBlankTexture, createTarget, deleteTarget, resampleTarget } from '../gl/target';
 import type { ShaderSource } from '../shader-source';
 import { MAX_CHANNELS, type PassGraph, type PassNode } from '../sketch/graph';
-import { type Slots, bufferSize, createSlots } from './buffers';
+import { type Slots, bufferSize, createSlots, graphBufferSizes } from './buffers';
 import type { FrameTime } from './clock';
 import type { ParameterUniform } from '../params/values';
 import { type ActiveUniform, type UniformLocations, parameterUniforms, setParameterUniforms, uniformLocations } from './uniforms';
@@ -317,7 +317,7 @@ export function createRenderer(gl: WebGL2RenderingContext): CaptureRenderer {
     renderOffscreen(frame) {
       if (!graph || !isRunning()) return { ok: false, error: '실행 중인 버전이 없습니다' };
       const current = graph;
-      const sizes = outputTargetSizes(current, [frame.width, frame.height]);
+      const sizes = graphBufferSizes(current, frame.width, frame.height);
       const tooBig = sizeLimitProblem(sizes, glSizeLimits(gl));
       if (tooBig) return { ok: false, error: tooBig };
 

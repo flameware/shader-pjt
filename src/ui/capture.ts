@@ -1,7 +1,7 @@
 import type { ButtonApi, Pane } from 'tweakpane';
 import { type CaptureInput, captureImage } from '../capture/capture';
 import type { CaptureKind } from '../capture/metadata';
-import { type OutputAvailability, outputCaptureAvailability, takeOutputCapture } from '../capture/output-capture';
+import { NO_FRAME, type OutputAvailability, outputCaptureAvailability, takeOutputCapture } from '../capture/output-capture';
 import type { SaveOutcome } from '../capture/save';
 import type { CaptureRenderer } from '../engine/renderer';
 import type { OutputSize, RenderScale } from '../output/output-size';
@@ -105,9 +105,9 @@ export function mountCapture(ui: BrowserUi, pane: Pane, options: CaptureOptions)
   let outputPending = false;
   const requestScreen = () => void (screenPending = true);
   const requestOutput = () => {
-    const now = availability();
+    const current = availability();
     // The button is disabled then; the shortcut gives the same reason as its tooltip.
-    if (!now.ok) return ui.toasts.show(now.reason);
+    if (!current.ok) return ui.toasts.show(current.reason);
     outputPending = true;
   };
   ui.keymap.add({ keys: ['C'], description: '화면 Capture', run: requestScreen });
@@ -117,8 +117,8 @@ export function mountCapture(ui: BrowserUi, pane: Pane, options: CaptureOptions)
 
   let shownReason: string | null | undefined;
   const updateButton = () => {
-    const now = availability();
-    const reason = now.ok ? null : now.reason;
+    const current = availability();
+    const reason = current.ok ? null : current.reason;
     if (reason === shownReason) return;
     shownReason = reason;
     folder.output.disabled = reason !== null;
@@ -167,7 +167,7 @@ export function mountCapture(ui: BrowserUi, pane: Pane, options: CaptureOptions)
       screenPending = false;
       const image = options.renderer.readMain();
       if (!image) {
-        ui.toasts.show('Capture할 프레임이 아직 없습니다 (컴파일된 버전이 없음)');
+        ui.toasts.show(NO_FRAME);
         return;
       }
       void save({
