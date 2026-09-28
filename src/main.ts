@@ -14,6 +14,7 @@ import { buildPassGraph } from './sketch/graph';
 import { pickSketch, sketchNames } from './sketch/pick';
 import { mountBanner } from './ui/banner';
 import { bannerView } from './ui/banner-view';
+import { mountControls } from './ui/controls';
 
 // Vite needs literal globs. Every .frag is listed (subfolder ones only to warn about them); a
 // module is only fetched when its Sketch is opened. Adding, removing or renaming a .frag or a
@@ -60,6 +61,9 @@ async function start(): Promise<void> {
   const banner = mountBanner(document.body);
   // Reads isRunning() when notified, so producers must report after they change the engine.
   diagnostics.subscribe((all) => banner.render(bannerView(all, engine.isRunning())));
+  // HUD, play bar, toasts and the keymap (#18). Later features mount into `controls.hud` regions,
+  // add keys with `controls.keymap.add` and notify with `controls.toasts.show`.
+  const controls = mountControls(document.body, engine);
 
   const { passFiles, diagnostics: fileProblems } = sketchPassFiles(name, Object.keys(fragModules));
   const loaded = await loadSketchConfig(name);
@@ -112,7 +116,8 @@ async function start(): Promise<void> {
       canvas.width = width;
       canvas.height = height;
     }
-    engine.frame(now, { width, height, mouse: mouse.value() });
+    const tick = engine.frame(now, { width, height, mouse: mouse.value() });
+    controls.frame(tick, now);
     mouse.endFrame();
     requestAnimationFrame(frame);
   };

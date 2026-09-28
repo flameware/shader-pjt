@@ -1,6 +1,6 @@
 import type { ShaderSource } from '../shader-source';
 import type { PassGraph } from '../sketch/graph';
-import type { Clock } from './clock';
+import type { Clock, ClockTick } from './clock';
 import type { Renderer, SwapResult } from './renderer';
 
 export interface FrameSize {
@@ -9,6 +9,9 @@ export interface FrameSize {
   height: number;
   mouse: readonly [number, number, number, number];
 }
+
+/** The play bar's and shortcuts' handle on time: pause, single-frame step and speed. */
+export type Playback = Pick<Clock, 'setPaused' | 'isPaused' | 'step' | 'setSpeed' | 'speed'>;
 
 /**
  * The running Sketch: its pass graph, programs, buffers and clock. The reset rules (#5) live
@@ -21,17 +24,25 @@ export interface Engine {
   setGraph(graph: PassGraph | null): void;
   /** Whether a compiled version of the whole graph is on screen. */
   isRunning(): boolean;
-  /** Time 0, `iFrame` 0, Feedback buffers cleared. Which key or button calls it is up to the HUD (#18). */
+  /** Time 0, `iFrame` 0, Feedback buffers cleared. Pause state and speed are kept. */
   reset(): void;
-  /** Advances the clock and draws the frame at `nowMs` (a `requestAnimationFrame` timestamp). */
-  frame(nowMs: number, size: FrameSize): void;
+  readonly playback: Playback;
+  /**
+   * Advances the clock and draws the frame at `nowMs` (a `requestAnimationFrame` timestamp);
+   * returns the time it drew with. While paused, a Sketch without Feedback keeps redrawing the
+   * same moment (so Parameter changes show), and a Feedback Sketch is not drawn at all: running
+   * its Passes again would feed the frame into itself.
+   */
+  frame(nowMs: number, size: FrameSize): ClockTick;
 }
 
 export function createEngine(renderer: Renderer, clock: Clock): Engine {
+  let feedback = false;
   return {
     setShader: (pass, shader) => renderer.setShader(pass, shader),
     setGraph(graph) {
       renderer.setGraph(graph);
+      feedback = graph !== null && graph.order.some((name) => graph.passes[name]?.feedback);
       clock.reset();
     },
     isRunning: () => renderer.isRunning(),
@@ -39,8 +50,11 @@ export function createEngine(renderer: Renderer, clock: Clock): Engine {
       renderer.clearBuffers();
       clock.reset();
     },
+    playback: clock,
     frame(nowMs, size) {
-      renderer.draw({ ...clock.tick(nowMs), ...size });
+      const tick = clock.tick(nowMs);
+      if (tick.advanced || !feedback) renderer.draw({ ...tick, ...size });
+      return tick;
     },
   };
 }
