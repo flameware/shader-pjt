@@ -33,15 +33,15 @@ describe('shaderPlugin in the dev server', () => {
   afterAll(() => server.close());
 
   it('turns a .frag into a module that accepts its own hot updates, so saving never falls back to a full reload', async () => {
-    const result = await server.transformRequest('/sketches/demo/main.frag?import');
+    const result = await server.transformRequest('/sketches/sample/main.frag?import');
     expect(result).not.toBeNull();
-    const mod = await server.moduleGraph.getModuleByUrl('/sketches/demo/main.frag?import');
+    const mod = await server.moduleGraph.getModuleByUrl('/sketches/sample/main.frag?import');
     expect(mod?.isSelfAccepting).toBe(true);
   });
 
   it('exports the shader source with its line table', async () => {
-    const mod = await server.ssrLoadModule('/sketches/demo/main.frag');
-    expect(mod.default.files).toEqual(['sketches/demo/main.frag']);
+    const mod = await server.ssrLoadModule('/sketches/sample/main.frag');
+    expect(mod.default.files).toEqual(['sketches/sample/main.frag']);
     expect(mod.default.source).toContain('void mainImage(');
     expect(mod.default.lines[0]).toEqual([0, 1]);
   });

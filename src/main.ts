@@ -2,11 +2,12 @@ import { onShaderUpdate } from 'virtual:shader-hot';
 import { createClock } from './engine/clock';
 import { createMouse, toRenderPixel } from './engine/mouse';
 import { createRenderer, type SwapResult } from './engine/renderer';
-import { renderSize } from './engine/resolution';
+import { renderSize } from './engine/render-size';
 import { UNSUPPORTED_MESSAGE, missingRequiredFeature } from './gl/features';
 import type { ShaderSource } from './shader-source';
-import { pickSketch, sketchNames } from './sketch/pick';
+import { mainPassFile, pickSketch, sketchNames } from './sketch/pick';
 
+// Vite needs a literal glob; keep it in step with mainPassFile().
 const mainPasses = import.meta.glob<ShaderSource>('/sketches/*/main.frag', { import: 'default' });
 
 /** Replaces the canvas with a plain-text message and stops. */
@@ -32,7 +33,7 @@ async function start(): Promise<void> {
   if (name === null) return showMessage('sketches/ 폴더에 Sketch가 없습니다.');
   document.title = `${name} · shader playground`;
 
-  const mainFile = `sketches/${name}/main.frag`;
+  const mainFile = mainPassFile(name);
   reportSwap(mainFile, renderer.setShader(await mainPasses[`/${mainFile}`]!()));
   onShaderUpdate((shader) => {
     if (shader.files[0] === mainFile) reportSwap(mainFile, renderer.setShader(shader));
@@ -41,14 +42,15 @@ async function start(): Promise<void> {
   const mouse = createMouse();
   const pixel = (e: PointerEvent) =>
     toRenderPixel(e.clientX, e.clientY, canvas.getBoundingClientRect(), canvas.width, canvas.height);
+  // Only the primary pointer drives iMouse, so a second touch can't move the click position.
   canvas.addEventListener('pointerdown', (e) => {
-    if (e.button !== 0) return;
+    if (!e.isPrimary || e.button !== 0) return;
     canvas.setPointerCapture(e.pointerId);
     mouse.press(...pixel(e));
   });
-  canvas.addEventListener('pointermove', (e) => mouse.move(...pixel(e)));
-  canvas.addEventListener('pointerup', () => mouse.release());
-  canvas.addEventListener('pointercancel', () => mouse.release());
+  canvas.addEventListener('pointermove', (e) => e.isPrimary && mouse.move(...pixel(e)));
+  canvas.addEventListener('pointerup', (e) => e.isPrimary && mouse.release());
+  canvas.addEventListener('pointercancel', (e) => e.isPrimary && mouse.release());
 
   const clock = createClock();
   const frame = (now: number) => {

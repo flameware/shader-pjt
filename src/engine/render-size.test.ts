@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { renderSize } from './resolution';
+import { renderSize } from './render-size';
 
 describe('renderSize', () => {
   it('multiplies the CSS size by devicePixelRatio', () => {

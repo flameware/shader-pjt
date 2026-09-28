@@ -1,5 +1,10 @@
 const MAIN_PASS_PATH = /\/sketches\/([^/]+)\/main\.frag$/;
 
+/** Project-relative path of a Sketch's Main pass, as `ShaderSource.files[0]` names it. */
+export function mainPassFile(name: string): string {
+  return `sketches/${name}/main.frag`;
+}
+
 /** Sketch names from the paths of their `main.frag` files, sorted by name (= by date). */
 export function sketchNames(mainPassPaths: readonly string[]): string[] {
   return mainPassPaths
