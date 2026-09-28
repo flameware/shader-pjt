@@ -6,6 +6,7 @@
 export const SKETCH_ADDED_EVENT = 'shader-playground:sketch-added';
 
 export interface SketchAddedPayload {
+  /** The new Sketch's folder name under `sketches/`. */
   name: string;
 }
 

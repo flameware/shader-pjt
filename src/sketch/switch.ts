@@ -40,6 +40,7 @@ export interface GoOptions {
 export interface SketchSwitch {
   /** Picks the Sketch to open from `?sketch` and writes the choice back into the URL. */
   open(names: readonly string[]): OpenedSketch;
+  /** Opens Sketch `name`: rewrites `?sketch` and reloads (see `GoOptions.reload`). */
   go(name: string, options?: GoOptions): void;
 }
 
@@ -81,7 +82,11 @@ export function createSketchSwitch(page: SwitchPage): SketchSwitch {
 
     go(name, { notice, reload = 'now' } = {}) {
       replaceUrl(name);
-      if (notice !== undefined) page.storage?.setItem(NOTICE_KEY, notice);
+      try {
+        if (notice !== undefined) page.storage?.setItem(NOTICE_KEY, notice);
+      } catch {
+        // Storage full or blocked: switch anyway, without the arrival toast.
+      }
       if (reload === 'now') page.location.reload();
       else page.setTimeout(() => page.location.reload(), FALLBACK_RELOAD_MS);
     },

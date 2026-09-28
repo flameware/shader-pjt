@@ -46,6 +46,9 @@ export interface Keymap {
   bindings(): readonly KeyBinding[];
 }
 
+/** Whether `Mod` reads as ⌘ here (macOS / iOS). */
+export const isMac = (): boolean => /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+
 /** How a key name reads in the shortcut table: `Mod+K` is `⌘K` on macOS and `Ctrl+K` elsewhere. */
 export function keyLabel(name: string, mac: boolean): string {
   return name.replace(/^Mod\+/, mac ? '⌘' : 'Ctrl+');

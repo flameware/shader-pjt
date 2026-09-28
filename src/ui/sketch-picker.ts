@@ -2,11 +2,9 @@ import { SKETCH_ADDED_EVENT } from '../sketch/events';
 import { neighbourSketch } from '../sketch/navigate';
 import type { SketchSwitch } from '../sketch/switch';
 import type { BrowserUi } from './browser-ui';
-import { keyLabel } from './keymap';
+import { isMac, keyLabel } from './keymap';
 import { createPaletteState } from './palette-state';
 import './sketch-picker.css';
-
-const isMac = () => /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 
 export interface SketchPicker {
   /** Shows or hides the feedback badge next to the name (once the pass graph is known). */
@@ -16,6 +14,7 @@ export interface SketchPicker {
 export interface SketchPickerOptions {
   /** Every Sketch, sorted by name. */
   names: readonly string[];
+  /** The Sketch this page is running. */
   current: string;
   sketchSwitch: SketchSwitch;
 }
@@ -120,9 +119,12 @@ export function mountSketchPicker(parent: HTMLElement, ui: BrowserUi, { names, c
       state.move(event.key === 'ArrowDown' ? 1 : -1);
       render();
     } else if (event.key === 'Enter') choose();
-    else if (event.key === 'Escape' || (mod && event.key.toLowerCase() === 'k')) closePalette();
+    // KeyK: the physical key, so ⌘K also closes it with a non-Latin input source (as in the keymap).
+    else if (event.key === 'Escape' || (mod && event.code === 'KeyK')) closePalette();
     else return;
     event.preventDefault();
+    // Esc here is the palette's; don't let it also close an open shortcut table behind it.
+    event.stopPropagation();
   });
   input.addEventListener('blur', () => {
     // Clicking outside the box (or switching windows) closes it; clicks inside keep focus (below).
@@ -131,15 +133,20 @@ export function mountSketchPicker(parent: HTMLElement, ui: BrowserUi, { names, c
   box.addEventListener('mousedown', (event) => {
     if (event.target !== input) event.preventDefault();
   });
+  /** The palette row under the pointer, or `null` (the "no match" row, or the gaps). */
+  const rowIndex = (event: MouseEvent): number | null => {
+    const row = (event.target as Element).closest<HTMLElement>('li[data-index]');
+    return row ? Number(row.dataset.index) : null;
+  };
   list.addEventListener('mousemove', (event) => {
-    const index = Number((event.target as HTMLElement).closest<HTMLElement>('li[data-index]')?.dataset.index ?? NaN);
-    if (Number.isNaN(index) || index === state.view().selected) return;
+    const index = rowIndex(event);
+    if (index === null || index === state.view().selected) return;
     state.select(index);
     render();
   });
   list.addEventListener('click', (event) => {
-    const index = Number((event.target as HTMLElement).closest<HTMLElement>('li[data-index]')?.dataset.index ?? NaN);
-    if (Number.isNaN(index)) return;
+    const index = rowIndex(event);
+    if (index === null) return;
     state.select(index);
     choose();
   });
@@ -148,7 +155,8 @@ export function mountSketchPicker(parent: HTMLElement, ui: BrowserUi, { names, c
   ui.keymap.add({ keys: ['['], description: '이전 Sketch (이름순)', run: () => go(neighbourSketch(names, current, -1)) });
   ui.keymap.add({ keys: [']'], description: '다음 Sketch (이름순)', run: () => go(neighbourSketch(names, current, 1)) });
 
-  // A new Sketch folder (#12 decision 10). Vite reloads the page right after this event, because
+  // A new Sketch folder (#12 decision 10); every open tab follows it. A renamed folder counts as
+  // new too, since its main.frag appears under the new name. Vite reloads the page right after this event, because
   // the Sketch globs in main.ts changed; the URL is rewritten first so that reload opens the new
   // Sketch, and the notice rides along to be shown there.
   import.meta.hot?.on(SKETCH_ADDED_EVENT, ({ name }) => {

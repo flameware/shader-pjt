@@ -17,6 +17,7 @@ describe('newSketchName', () => {
     expect(newSketchName('/repo/sketches/main.frag', root)).toBeNull();
     expect(newSketchName('/repo/templates/default/main.frag', root)).toBeNull();
     expect(newSketchName('/other/sketches/x/main.frag', root)).toBeNull();
+    expect(newSketchName('/repo/lib/sketches/x/main.frag', root)).toBeNull();
   });
 });
 

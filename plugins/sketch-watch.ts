@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { normalizePath, type Plugin } from 'vite';
 import { SKETCH_ADDED_EVENT, type SketchAddedPayload } from '../src/sketch/events.ts';
+import { sketchNames } from '../src/sketch/pick.ts';
 
 /**
  * The Sketch `file` makes new, if it is a top-level `main.frag` in a `sketches/` folder: a folder
@@ -9,7 +10,9 @@ import { SKETCH_ADDED_EVENT, type SketchAddedPayload } from '../src/sketch/event
  */
 export function newSketchName(file: string, root: string): string | null {
   const relative = path.posix.relative(normalizePath(root), normalizePath(file));
-  return /^sketches\/([^/]+)\/main\.frag$/.exec(relative)?.[1] ?? null;
+  if (relative.startsWith('..')) return null;
+  // The browser's own rule, applied to the root-relative path its glob would list.
+  return sketchNames([`/${relative}`])[0] ?? null;
 }
 
 /**

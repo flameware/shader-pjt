@@ -86,4 +86,20 @@ describe('switching Sketches', () => {
     sketchSwitch.go('2026-09-27', { notice: 'x' });
     expect(sketchSwitch.open(names).notice).toBeNull();
   });
+
+  it('still switches when storing the notice throws (storage full or blocked)', () => {
+    const base = fakePage('http://localhost/?sketch=2026-09-26');
+    const page = {
+      ...base,
+      storage: {
+        ...base.storage,
+        setItem: () => {
+          throw new Error('QuotaExceededError');
+        },
+      },
+    };
+    createSketchSwitch(page).go('2026-09-27', { notice: 'x' });
+    expect(base.href).toBe('http://localhost/?sketch=2026-09-27');
+    expect(base.reloads).toBe(1);
+  });
 });
