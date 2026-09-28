@@ -33,5 +33,9 @@ A value exposed by a sketch that can be tuned live from a GUI while the sketch r
 _Avoid_: control, knob, setting
 
 **Capture**:
-Saving the currently rendered frame of a sketch as an image.
+Saving the current frame of a sketch as an image — either exactly as shown on screen, or the same moment re-rendered at the sketch's Output size.
 _Avoid_: screenshot, export
+
+**Output size**:
+The shape and pixel dimensions a sketch is composed for and captured at — either the browser window, or a preset such as 4:5 at 2160×2700. The on-screen view keeps its aspect ratio.
+_Avoid_: resolution (ambiguous with `iResolution`), format (a buffer option), frame (a time step)
