@@ -32,6 +32,10 @@ _Avoid_: ping-pong (implementation term), history
 A value exposed by a sketch that can be tuned live from a GUI while the sketch runs. It belongs to the sketch as a whole: every pass that names the same parameter sees the same value.
 _Avoid_: control, knob, setting
 
+**Library**:
+Shader code shared across sketches and pulled into a sketch by include: either the playground's own library, or lygia as an optional external library. Code that belongs to a single sketch is not library code, even when several of that sketch's passes share it.
+_Avoid_: utils, helpers, common (the usual name of a sketch's own shared file)
+
 **Capture**:
 Saving the current frame of a sketch as an image — either exactly as shown on screen, or the same moment re-rendered at the sketch's Output size.
 _Avoid_: screenshot, export
