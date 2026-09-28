@@ -16,5 +16,5 @@
     "noEmit": true,
     "paths": { "playground": ["./src/sketch/define.ts"] }
   },
-  "include": ["src", "plugins", "sketches", "vite.config.ts"]
+  "include": ["src", "plugins", "scripts", "sketches", "templates", "vite.config.ts"]
 }

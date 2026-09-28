@@ -10,6 +10,6 @@ export default defineConfig({
     alias: { playground: fileURLToPath(new URL('./src/sketch/define.ts', import.meta.url)) },
   },
   test: {
-    include: ['src/**/*.test.ts', 'plugins/**/*.test.ts'],
+    include: ['src/**/*.test.ts', 'plugins/**/*.test.ts', 'scripts/**/*.test.ts'],
   },
 });
