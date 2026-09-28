@@ -1,11 +1,15 @@
 import { onShaderUpdate } from 'virtual:shader-hot';
+import { createDiagnosticsBoard } from './diagnostics/board';
+import { compileDiagnostics } from './diagnostics/compile';
 import { createClock } from './engine/clock';
 import { createMouse, toRenderPixel } from './engine/mouse';
-import { createRenderer, type SwapResult } from './engine/renderer';
+import { createRenderer } from './engine/renderer';
 import { renderSize } from './engine/render-size';
 import { UNSUPPORTED_MESSAGE, missingRequiredFeature } from './gl/features';
 import type { ShaderSource } from './shader-source';
 import { mainPassFile, pickSketch, sketchNames } from './sketch/pick';
+import { mountBanner } from './ui/banner';
+import { bannerView } from './ui/banner-view';
 
 // Vite needs a literal glob; keep it in step with mainPassFile().
 const mainPasses = import.meta.glob<ShaderSource>('/sketches/*/main.frag', { import: 'default' });
@@ -18,11 +22,6 @@ function showMessage(text: string): void {
   document.body.replaceChildren(message);
 }
 
-/** Until the error banner lands (#15), compile errors go to the console. */
-function reportSwap(file: string, result: SwapResult): void {
-  if (!result.ok) console.error(`[shader] ${file} failed to compile (${result.prefixLines} engine lines precede the body):\n${result.log}`);
-}
-
 async function start(): Promise<void> {
   const canvas = document.querySelector('canvas')!;
   const gl = canvas.getContext('webgl2', { alpha: false, antialias: false, depth: false, stencil: false });
@@ -33,10 +32,22 @@ async function start(): Promise<void> {
   if (name === null) return showMessage('sketches/ 폴더에 Sketch가 없습니다.');
   document.title = `${name} · shader playground`;
 
+  // Every problem (compile now; include, Parameter and pass-graph checks later) goes through
+  // the board to the banner. Compile failures keep the last good program running.
+  const diagnostics = createDiagnosticsBoard();
+  const banner = mountBanner(document.body);
+  // Reads hasProgram() when notified, so producers must report after they swap the program.
+  diagnostics.subscribe((all) => banner.render(bannerView(all, renderer.hasProgram())));
+
   const mainFile = mainPassFile(name);
-  reportSwap(mainFile, renderer.setShader(await mainPasses[`/${mainFile}`]!()));
+  const applyShader = (shader: ShaderSource) => {
+    const result = renderer.setShader(shader);
+    if (!result.ok) console.error(`[shader] ${mainFile} failed to compile:\n${result.log}`);
+    diagnostics.report(`compile:${mainFile}`, result.ok ? [] : compileDiagnostics(result.log, shader, result.prefixLines));
+  };
+  applyShader(await mainPasses[`/${mainFile}`]!());
   onShaderUpdate((shader) => {
-    if (shader.files[0] === mainFile) reportSwap(mainFile, renderer.setShader(shader));
+    if (shader.files[0] === mainFile) applyShader(shader);
   });
 
   const mouse = createMouse();

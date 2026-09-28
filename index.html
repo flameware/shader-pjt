@@ -20,6 +20,81 @@
         height: 100vh;
         touch-action: none;
       }
+      /* Top-centre banner (#9 decision 7): errors in red, warnings in amber. Never auto-hidden. */
+      .banner {
+        position: fixed;
+        top: 16px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 10;
+        box-sizing: border-box;
+        width: max-content;
+        max-width: min(90vw, 960px);
+        max-height: 60vh;
+        overflow: auto;
+        font: 12px/1.5 ui-monospace, Menlo, monospace;
+        border-radius: 6px;
+        pointer-events: auto;
+      }
+      .banner[hidden] {
+        display: none;
+      }
+      .banner-list {
+        list-style: none;
+        margin: 0;
+        padding: 8px 12px;
+      }
+      .banner-errors {
+        color: #ffd6d6;
+        background: rgba(40, 0, 0, 0.88);
+        border: 1px solid #ff5a5a;
+        border-radius: 6px 6px 0 0;
+      }
+      .banner-warnings {
+        color: #ffe9b8;
+        background: rgba(40, 28, 0, 0.88);
+        border: 1px dashed #e0a526;
+        border-radius: 6px;
+      }
+      .banner-errors ~ .banner-warnings {
+        margin-top: 6px;
+      }
+      .banner-item + .banner-item {
+        margin-top: 6px;
+      }
+      .banner-label {
+        font-weight: 700;
+        margin-right: 8px;
+      }
+      .banner-error .banner-label {
+        color: #ff5a5a;
+      }
+      .banner-warning .banner-label {
+        color: #e0a526;
+      }
+      .banner-location {
+        margin-right: 8px;
+        text-decoration: underline;
+      }
+      .banner-message {
+        white-space: pre-wrap;
+      }
+      .banner-code {
+        display: block;
+        margin-top: 2px;
+        padding-left: 16px;
+        white-space: pre;
+        opacity: 0.8;
+      }
+      .banner-status {
+        margin: 0;
+        padding: 4px 12px 6px;
+        color: #ffd6d6;
+        background: rgba(40, 0, 0, 0.88);
+        border: 1px solid #ff5a5a;
+        border-top: 1px solid rgba(255, 90, 90, 0.35);
+        border-radius: 0 0 6px 6px;
+      }
       .message {
         margin: 0;
         padding: 24px;

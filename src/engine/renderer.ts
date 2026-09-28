@@ -29,6 +29,8 @@ interface MainPass {
  */
 export interface Renderer {
   setShader(shader: ShaderSource): SwapResult;
+  /** True once any shader has compiled; until then `draw` leaves the canvas blank. */
+  hasProgram(): boolean;
   draw(frame: FrameInputs): void;
 }
 
@@ -57,6 +59,8 @@ export function createRenderer(gl: WebGL2RenderingContext): Renderer {
       };
       return { ok: true };
     },
+
+    hasProgram: () => main !== null,
 
     draw(frame) {
       if (!main) return;
