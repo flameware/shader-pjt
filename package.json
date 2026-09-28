@@ -11,10 +11,14 @@
     "test": "vitest run"
   },
   "devDependencies": {
+    "@tweakpane/core": "2.0.5",
     "@types/node": "^26.6.3",
     "lygia": "1.4.1",
     "typescript": "^7.0.2",
     "vite": "^8.3.1",
     "vitest": "^5.0.2"
+  },
+  "dependencies": {
+    "tweakpane": "4.0.5"
   }
 }

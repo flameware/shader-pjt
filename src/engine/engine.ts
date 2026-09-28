@@ -1,3 +1,4 @@
+import type { ParameterUniform } from '../params/values';
 import type { ShaderSource } from '../shader-source';
 import type { PassGraph } from '../sketch/graph';
 import type { Clock, ClockTick } from './clock';
@@ -8,6 +9,8 @@ export interface FrameSize {
   width: number;
   height: number;
   mouse: readonly [number, number, number, number];
+  /** Current Parameter values (#19). */
+  parameters?: readonly ParameterUniform[];
 }
 
 /** The play bar's and shortcuts' handle on time: pause, single-frame step and speed. */
