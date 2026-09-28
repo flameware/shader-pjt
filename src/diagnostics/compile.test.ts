@@ -39,6 +39,29 @@ describe('compileDiagnostics', () => {
     ]);
   });
 
+  it('maps an error inside an included file to that file and line, with the include chain that pulled it in', () => {
+    const included: ShaderSource = {
+      source: ['float hash(float x) { return fract(x * PI); }', 'void mainImage(out vec4 c, in vec2 p) { c = vec4(0.0); }'].join('\n'),
+      lines: [
+        [2, 2],
+        [0, 3],
+      ],
+      files: ['sketches/x/main.frag', 'lib/noise/valueNoise.glsl', 'lib/math/hash21.glsl'],
+      includedFrom: [null, [0, 2], [1, 1]],
+    };
+    const log = `ERROR: 0:${wrapped(1)}: 'PI' : undeclared identifier\n`;
+    expect(compileDiagnostics(log, included, prefixLines)).toEqual([
+      {
+        severity: 'error',
+        file: 'lib/math/hash21.glsl',
+        line: 2,
+        message: "'PI' : undeclared identifier",
+        sourceLine: 'float hash(float x) { return fract(x * PI); }',
+        includeChain: ['sketches/x/main.frag:2', 'lib/noise/valueNoise.glsl:1'],
+      },
+    ]);
+  });
+
   it('keeps every error in the log, in order, and drops the summary line', () => {
     const log = [
       `ERROR: 0:${wrapped(2)}: 'colr' : undeclared identifier`,

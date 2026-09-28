@@ -6,6 +6,8 @@ export interface BannerEntry {
   location?: string;
   message: string;
   sourceLine?: string;
+  /** For a file that came in through `#include`: the include lines that led to it, `a:2 → b:5`. */
+  via?: string;
 }
 
 /** Everything the banner shows; errors and warnings are listed apart so they can look different. */
@@ -16,9 +18,10 @@ export interface BannerView {
   status: string | null;
 }
 
-function entry({ file, line, message, sourceLine }: Diagnostic): BannerEntry {
+function entry({ file, line, message, sourceLine, includeChain }: Diagnostic): BannerEntry {
   const location = file === undefined ? undefined : line === undefined ? file : `${file}:${line}`;
-  return { location, message, sourceLine };
+  const via = includeChain?.length ? includeChain.join(' → ') : undefined;
+  return { location, message, sourceLine, via };
 }
 
 /**

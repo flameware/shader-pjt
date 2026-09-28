@@ -1,4 +1,4 @@
-import type { ShaderSource } from '../shader-source';
+import { includeChain, type ShaderSource } from '../shader-source';
 import type { Diagnostic } from './diagnostic';
 
 /**
@@ -38,7 +38,15 @@ export function compileDiagnostics(log: string, shader: ShaderSource, prefixLine
     const origin = shader.lines[index];
     if (origin) {
       const [fileIndex, line] = origin;
-      diagnostics.push({ severity, file: shader.files[fileIndex], line, message, sourceLine: bodyLines[index]?.trim() || undefined });
+      const chain = includeChain(shader, fileIndex);
+      diagnostics.push({
+        severity,
+        file: shader.files[fileIndex],
+        line,
+        message,
+        sourceLine: bodyLines[index]?.trim() || undefined,
+        ...(chain.length > 0 && { includeChain: chain }),
+      });
     } else {
       diagnostics.push({ severity, file: passFile, message });
     }

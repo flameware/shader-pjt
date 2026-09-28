@@ -13,4 +13,9 @@ export interface Diagnostic {
   line?: number;
   /** The text of the offending source line, trimmed. */
   sourceLine?: string;
+  /**
+   * When `file` came in through `#include`: the `file:line` of each include line from the Pass
+   * down to `file`, so a problem inside `lib/` or lygia shows which Pass pulled it in and how.
+   */
+  includeChain?: string[];
 }
