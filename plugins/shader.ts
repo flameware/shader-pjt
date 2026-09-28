@@ -1,6 +1,6 @@
 import path from 'node:path';
-import type { Plugin } from 'vite';
-import type { ShaderSource } from '../src/shader-source.ts';
+import { normalizePath, type Plugin } from 'vite';
+import { expandPass, type IncludeRoots } from './include.ts';
 
 /**
  * Hot updates of `.frag` modules reach the engine through this module. It has no file on
@@ -22,28 +22,28 @@ export function publishShaderUpdate(shader) {
 
 const FRAG = /\.frag$/;
 
-/** The data a `.frag` module exports. `#include` expansion (#16) will grow `lines`/`files` here. */
-export function shaderSource(code: string, file: string): ShaderSource {
-  return {
-    source: code,
-    lines: code.split('\n').map((_, i) => [0, i + 1]),
-    files: [file],
-  };
+/** Where the `lib/` and `lygia/` include prefixes point (ADR-0005). */
+function includeRoots(root: string): IncludeRoots {
+  return { project: root, lib: path.join(root, 'lib'), lygia: path.join(root, 'node_modules', 'lygia') };
 }
 
 /**
  * Turns each `.frag` file into a JS module exporting a `ShaderSource`. The module accepts its
  * own hot updates and hands the new source to `onShaderUpdate` listeners, so saving a `.frag`
  * swaps the shader without a page reload (a module nobody accepts would force a full reload).
+ * `#include`s are expanded here (see `include.ts`), and saving or creating an included file
+ * hot-updates every Pass that includes it.
  */
 export function shaderPlugin(): Plugin {
-  let root = process.cwd();
+  let roots = includeRoots(process.cwd());
+  /** Included (or missing) file → the `.frag` files whose expansion depends on it. */
+  const dependents = new Map<string, Set<string>>();
 
   return {
     name: 'shader-playground:shader',
     enforce: 'pre',
     configResolved(config) {
-      root = config.root;
+      roots = includeRoots(config.root);
     },
     resolveId(id) {
       return id === SHADER_HOT_ID ? RESOLVED_SHADER_HOT_ID : undefined;
@@ -54,7 +54,13 @@ export function shaderPlugin(): Plugin {
     transform(code, id) {
       const file = id.split('?', 1)[0]!;
       if (!FRAG.test(file)) return undefined;
-      const shader = shaderSource(code, path.relative(root, file).split(path.sep).join('/'));
+      const { shader, watchFiles, missingFiles } = expandPass(file, code, roots);
+      for (const watched of watchFiles) this.addWatchFile(watched);
+      for (const passes of dependents.values()) passes.delete(file);
+      for (const dep of [...watchFiles, ...missingFiles].map(normalizePath)) {
+        const passes = dependents.get(dep) ?? new Set<string>();
+        dependents.set(dep, passes.add(file));
+      }
       return {
         code: [
           `import { publishShaderUpdate } from '${SHADER_HOT_ID}';`,
@@ -65,6 +71,15 @@ export function shaderPlugin(): Plugin {
         ].join('\n'),
         map: null,
       };
+    },
+    // addWatchFile covers saving an included file. A missing include isn't in the module graph,
+    // so creating it (or deleting an include) is routed to the Passes that asked for it here.
+    hotUpdate({ file, modules }) {
+      const passes = dependents.get(file);
+      if (!passes?.size) return undefined;
+      const graph = this.environment.moduleGraph;
+      const passModules = [...passes].flatMap((pass) => [...(graph.getModulesByFile(pass) ?? [])]);
+      return [...new Set([...modules, ...passModules])];
     },
   };
 }

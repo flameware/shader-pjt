@@ -14,12 +14,13 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, className: string, te
 
 function list(kind: 'error' | 'warning', entries: BannerEntry[]): HTMLElement {
   const ul = el('ul', `banner-list banner-${kind}s`);
-  for (const { location, message, sourceLine } of entries) {
+  for (const { location, message, sourceLine, via } of entries) {
     const li = el('li', `banner-item banner-${kind}`);
     li.append(el('span', 'banner-label', kind === 'error' ? 'ERROR' : 'WARNING'));
     if (location) li.append(el('span', 'banner-location', location));
     li.append(el('span', 'banner-message', message));
     if (sourceLine) li.append(el('code', 'banner-code', sourceLine));
+    if (via) li.append(el('span', 'banner-via', `include 경로: ${via}`));
     ul.append(li);
   }
   return ul;

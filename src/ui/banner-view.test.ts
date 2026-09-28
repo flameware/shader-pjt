@@ -29,6 +29,11 @@ describe('bannerView', () => {
     });
   });
 
+  it('shows how an included file got into the Pass', () => {
+    const view = bannerView([{ ...colr, file: 'lib/math/hash21.glsl', line: 2, includeChain: ['sketches/x/main.frag:2', 'lib/noise/valueNoise.glsl:1'] }], true);
+    expect(view?.errors[0]?.via).toBe('sketches/x/main.frag:2 → lib/noise/valueNoise.glsl:1');
+  });
+
   it('says nothing is running when no version has ever compiled', () => {
     expect(bannerView([colr], false)?.status).toBe('실행 중인 버전 없음 · 고쳐서 저장하면 다시 컴파일');
   });
