@@ -42,15 +42,15 @@ export function parseNewArgs(argv: readonly string[]): NewRequest | { help: true
     const next = argv[i + 1];
     const nextIsValue = next !== undefined && !next.startsWith('-');
 
-    if (flag === '--') {
+    if (inline !== undefined && flag !== '--template' && flag !== '--from') {
+      throw new UsageError(`${flag}에는 값을 줄 수 없습니다: ${arg}`);
+    } else if (flag === '--') {
       words.push(...argv.slice(i + 1));
       break;
     } else if (flag === '-h' || flag === '--help') {
       return { help: true };
     } else if (flag === '-t' || flag === '--template') {
-      if (inline !== undefined) template = inline;
-      else if (nextIsValue) template = argv[++i]!;
-      else throw new UsageError(`${flag}에 Template 이름이 필요합니다 (예: -t feedback)`);
+      template = inline ?? (nextIsValue ? argv[++i]! : '');
       if (template === '') throw new UsageError(`${flag}에 Template 이름이 필요합니다 (예: -t feedback)`);
     } else if (flag === '--from') {
       if (inline !== undefined) from = inline === '' ? null : inline;

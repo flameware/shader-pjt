@@ -38,13 +38,13 @@ function copySources(from: string, to: string): void {
 }
 
 /** The folder a new Sketch is copied from, checked before anything is created. */
-function sourceFolder(root: string, start: NewRequest['start']): { dir: string; sourcesOnly: boolean } {
+function sourceFolder(root: string, start: NewRequest['start']): string {
   if ('template' in start) {
     const templates = foldersWithMain(join(root, 'templates'));
     if (!templates.includes(start.template)) {
       throw new NewSketchError(`Template '${start.template}'이 없습니다. 쓸 수 있는 Template: ${templates.join(', ') || '(없음)'}`);
     }
-    return { dir: join(root, 'templates', start.template), sourcesOnly: false };
+    return join(root, 'templates', start.template);
   }
 
   const sketches = foldersWithMain(join(root, 'sketches'));
@@ -52,12 +52,9 @@ function sourceFolder(root: string, start: NewRequest['start']): { dir: string; 
   if (name === null) throw new NewSketchError('복사할 Sketch가 없습니다 (sketches/가 비어 있습니다)');
   if (!sketches.includes(name)) {
     const recent = sketches.slice(-5).join(', ');
-    throw new NewSketchError(
-      `Sketch '${name}'이 없습니다. 최근 Sketch: ${recent}\n` +
-        '가장 최근 Sketch를 복사하면서 slug를 주려면 slug를 --from 앞에 쓰세요: npm run new -- waves --from',
-    );
+    throw new NewSketchError(`Sketch '${name}'이 없습니다. 최근 Sketch: ${recent}`);
   }
-  return { dir: join(root, 'sketches', name), sourcesOnly: true };
+  return join(root, 'sketches', name);
 }
 
 /**
@@ -72,9 +69,14 @@ export function createSketch(root: string, request: Pick<NewRequest, 'slug' | 's
   const dir = join(sketches, name);
 
   mkdirSync(sketches, { recursive: true });
-  mkdirSync(dir); // not recursive: fails rather than writing into a folder that appeared meanwhile
-  if (source.sourcesOnly) copySources(source.dir, dir);
-  else cpSync(source.dir, dir, { recursive: true });
+  try {
+    mkdirSync(dir); // not recursive: fails rather than writing into a folder that appeared meanwhile
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'EEXIST') throw new NewSketchError(`sketches/${name}이 방금 생겼습니다. 다시 실행하세요`);
+    throw error;
+  }
+  if ('template' in request.start) cpSync(source, dir, { recursive: true });
+  else copySources(source, dir);
 
   return { name, dir, mainFile: join(dir, 'main.frag') };
 }

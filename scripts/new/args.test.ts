@@ -58,5 +58,6 @@ describe('parseNewArgs', () => {
     expect(() => parse('-t')).toThrow(UsageError);
     expect(() => parse('-t --no-open')).toThrow(UsageError);
     expect(() => parse('--open')).toThrow(/--open/);
+    expect(() => parse('--no-open=x')).toThrow(UsageError);
   });
 });

@@ -31,11 +31,15 @@ let created: ReturnType<typeof createSketch>;
 try {
   created = createSketch(root, parsed, new Date());
 } catch (error) {
-  if (error instanceof NewSketchError) fail(error.message);
+  if (error instanceof NewSketchError) {
+    const named = 'from' in parsed.start && parsed.start.from !== null;
+    // `--from waves` reads `waves` as the Sketch to copy, not as the slug.
+    fail(named ? `${error.message}\n가장 최근 Sketch를 복사하면서 slug를 주려면 slug를 --from 앞에 쓰세요: npm run new -- waves --from` : error.message);
+  }
   throw error;
 }
 
-console.log(`새 Sketch: ${relative(process.cwd(), created.dir) || '.'}/`);
+console.log(`새 Sketch: ${relative(process.cwd(), created.dir)}/`);
 
 if (parsed.open) {
   // Same detection as Vite's "open in editor": a running editor, or the LAUNCH_EDITOR env variable.

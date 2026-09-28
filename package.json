@@ -22,5 +22,8 @@
   },
   "dependencies": {
     "tweakpane": "4.0.5"
+  },
+  "engines": {
+    "node": "^22.18.0 || >=23.6.0"
   }
 }
