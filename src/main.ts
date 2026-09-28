@@ -8,11 +8,15 @@ import { createMouse, toRenderPixel } from './engine/mouse';
 import { createRenderer } from './engine/renderer';
 import { renderSize } from './engine/render-size';
 import { UNSUPPORTED_MESSAGE, hasFloatLinear, missingRequiredFeature } from './gl/features';
+import { parameterPassOrder } from './params/merge';
+import { createPassPipeline } from './params/pipeline';
+import { browserStorage, createParameterValues } from './params/values';
 import type { ShaderSource } from './shader-source';
 import { sketchConfigFile, sketchPassFiles } from './sketch/files';
 import { buildPassGraph } from './sketch/graph';
 import { pickSketch, sketchNames } from './sketch/pick';
 import { mountBanner } from './ui/banner';
+import { mountParameterPanel } from './ui/parameter-panel';
 import { bannerView } from './ui/banner-view';
 import { mountBrowserUi } from './ui/browser-ui';
 
@@ -55,8 +59,8 @@ async function start(): Promise<void> {
   if (name === null) return showMessage('sketches/ 폴더에 Sketch가 없습니다.');
   document.title = `${name} · shader playground`;
 
-  // Every problem (compile, include, pass graph; Parameter checks later) goes through the
-  // board to the banner. Compile and include failures keep the last good program running.
+  // Every problem (compile, include, pass graph, Parameter declarations) goes through the
+  // board to the banner. Compile, include and Parameter errors keep the last good program running.
   const diagnostics = createDiagnosticsBoard();
   const banner = mountBanner(document.body);
   // Reads isRunning() when notified, so producers must report after they change the engine.
@@ -75,26 +79,29 @@ async function start(): Promise<void> {
   if (built.graph?.title) document.title = `${built.graph.title} · shader playground`;
   diagnostics.report('graph', [...fileProblems, ...loaded.diagnostics, ...built.diagnostics]);
 
-  // Every Pass compiles, including ones that don't run, so their errors show too.
-  const applyShader = (pass: string, shader: ShaderSource) => {
-    const file = shader.files[0]!;
-    // An include that doesn't resolve blocks the new version like a compile failure does.
-    // Its compile errors (if any) belonged to an older version, so they are cleared.
-    const resolveErrors = shader.resolveErrors ?? [];
-    diagnostics.report(`include:${file}`, resolveErrors);
-    if (resolveErrors.length > 0) {
-      diagnostics.report(`compile:${file}`, []);
-      return;
-    }
-    const result = engine.setShader(pass, shader);
-    if (!result.ok) console.error(`[shader] ${file} failed to compile:\n${result.log}`);
-    diagnostics.report(`compile:${file}`, result.ok ? [] : compileDiagnostics(result.log, shader, result.prefixLines));
-  };
+  // Parameters (#19): values per Sketch in localStorage, controls in the Tweakpane panel.
+  const parameters = createParameterValues(name, browserStorage());
+  mountParameterPanel(ui.hud.topRight, parameters);
+
+  // Every Pass compiles, including ones that don't run, so their errors show too. Include and
+  // Parameter errors block a Pass's new version like a compile failure does.
+  const pipeline = createPassPipeline({
+    passFiles,
+    order: parameterPassOrder(Object.keys(passFiles), built.graph?.order ?? null),
+    compile(pass, shader) {
+      const result = engine.setShader(pass, shader);
+      if (result.ok) return result;
+      console.error(`[shader] ${shader.files[0]} failed to compile:\n${result.log}`);
+      return { ok: false, diagnostics: compileDiagnostics(result.log, shader, result.prefixLines) };
+    },
+    report: (key, list) => diagnostics.report(key, list),
+    onParameters: (list, options) => parameters.setParameters(list, options),
+  });
   const shaders = await Promise.all(Object.entries(passFiles).map(async ([pass, file]) => [pass, await fragModules[`/${file}`]!()] as const));
-  for (const [pass, shader] of shaders) applyShader(pass, shader);
+  pipeline.update(shaders);
   onShaderUpdate((shader) => {
     const pass = Object.keys(passFiles).find((p) => passFiles[p] === shader.files[0]);
-    if (pass !== undefined) applyShader(pass, shader);
+    if (pass !== undefined) pipeline.update([[pass, shader]]);
   });
 
   const mouse = createMouse();
@@ -117,7 +124,7 @@ async function start(): Promise<void> {
       canvas.width = width;
       canvas.height = height;
     }
-    const tick = engine.frame(now, { width, height, mouse: mouse.value() });
+    const tick = engine.frame(now, { width, height, mouse: mouse.value(), parameters: parameters.uniforms() });
     ui.frame(tick, now);
     mouse.endFrame();
     requestAnimationFrame(frame);

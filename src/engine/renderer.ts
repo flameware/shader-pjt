@@ -4,7 +4,8 @@ import type { ShaderSource } from '../shader-source';
 import { MAX_CHANNELS, type PassGraph, type PassNode } from '../sketch/graph';
 import { type Slots, bufferSize, createSlots } from './buffers';
 import type { FrameTime } from './clock';
-import { type UniformLocations, uniformLocations } from './uniforms';
+import type { ParameterUniform } from '../params/values';
+import { type ActiveUniform, type UniformLocations, parameterUniforms, setParameterUniforms, uniformLocations } from './uniforms';
 import { wrapMainImage } from './wrap';
 
 export interface FrameInputs extends FrameTime {
@@ -12,6 +13,8 @@ export interface FrameInputs extends FrameTime {
   width: number;
   height: number;
   mouse: readonly [number, number, number, number];
+  /** Current Parameter values, shared by every Pass that declares them. */
+  parameters?: readonly ParameterUniform[];
 }
 
 export type SwapResult = { ok: true } | { ok: false; log: string; prefixLines: number };
@@ -19,6 +22,7 @@ export type SwapResult = { ok: true } | { ok: false; log: string; prefixLines: n
 interface PassProgram {
   program: WebGLProgram;
   uniforms: UniformLocations;
+  parameters: Map<string, ActiveUniform>;
 }
 
 /** A Pass's output: one target, or two when it has Feedback. */
@@ -116,7 +120,7 @@ export function createRenderer(gl: WebGL2RenderingContext): Renderer {
       const uniforms = uniformLocations(gl, result.program);
       gl.useProgram(result.program);
       uniforms.iChannels.forEach((location, unit) => gl.uniform1i(location, unit));
-      programs.set(pass, { program: result.program, uniforms });
+      programs.set(pass, { program: result.program, uniforms, parameters: parameterUniforms(gl, result.program) });
       return { ok: true };
     },
 
@@ -152,7 +156,7 @@ export function createRenderer(gl: WebGL2RenderingContext): Renderer {
 
       for (const name of graph.order) {
         const node = graph.passes[name]!;
-        const { program, uniforms: u } = programs.get(name)!;
+        const { program, uniforms: u, parameters } = programs.get(name)!;
         const buffer = buffers.get(name);
         const target = buffer?.targets[buffer.slots.write()];
         const [width, height] = target ? [target.width, target.height] : [frame.width, frame.height];
@@ -165,6 +169,7 @@ export function createRenderer(gl: WebGL2RenderingContext): Renderer {
         gl.uniform1f(u.iTimeDelta, frame.timeDelta);
         gl.uniform1i(u.iFrame, frame.frame);
         gl.uniform4f(u.iMouse, ...frame.mouse);
+        setParameterUniforms(gl, parameters, frame.parameters ?? []);
         bindChannels(node, u);
         drawFullscreen(gl);
         buffer?.slots.written();
