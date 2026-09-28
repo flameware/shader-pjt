@@ -75,7 +75,8 @@ export function findDeclarations(shader: ShaderSource): DeclarationsResult {
     };
 
     if (annotation !== undefined && !inSketch) return report('error', IN_LIBRARY);
-    const reserved = names.filter(isEngineUniformName);
+    // Only the Sketch's own files: a Library uniform isn't the user's to rename.
+    const reserved = inSketch ? names.filter(isEngineUniformName) : [];
     for (const name of reserved) report('error', engineName(name));
     if (reserved.length > 0) return;
     if (annotation === undefined) {

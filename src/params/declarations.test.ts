@@ -98,7 +98,7 @@ describe('findDeclarations', () => {
 
   it('leaves uniforms in Library files alone (lygia declares some behind #ifdef)', () => {
     const result = findDeclarations(
-      pass([['node_modules/lygia/x.glsl', 'uniform sampler2D MATERIAL_NORMALMAP;'], 'void mainImage(out vec4 c, in vec2 p) {}'], { includedFrom: [null, [0, 1]] }),
+      pass([['node_modules/lygia/x.glsl', 'uniform sampler2D MATERIAL_NORMALMAP;'], ['node_modules/lygia/x.glsl', 'uniform float iLygia;'], 'void mainImage(out vec4 c, in vec2 p) {}'], { includedFrom: [null, [0, 1]] }),
     );
     expect(result).toEqual({ declarations: [], diagnostics: [] });
   });

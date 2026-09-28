@@ -106,6 +106,20 @@ describe('createPassPipeline', () => {
     expect(messages()).toEqual({ 'compile:sketches/s/main.frag': ['error: syntax error'] });
   });
 
+  it('checks a Pass with include errors against the declarations it still runs', () => {
+    const { pipeline, compiled, last, messages } = setup();
+    pipeline.update([
+      ['main', main1],
+      ['blur', blur1],
+    ]);
+    const resolveErrors: Diagnostic[] = [{ severity: 'error', message: '파일 없음' }];
+    pipeline.update([['main', shader('main', ['uniform float x;'], { resolveErrors })]]);
+    pipeline.update([['blur', shader('blur', ['uniform float speed; // @param 0..5 = 1'])]]);
+    expect(compiled).toHaveLength(2);
+    expect(messages()['param:sketches/s/blur.frag']).toHaveLength(1);
+    expect(last()?.names).toEqual(['speed', 'radius']);
+  });
+
   it('is incomplete until every Pass has been built', () => {
     const { pipeline, last } = setup();
     pipeline.update([['main', main1]]);

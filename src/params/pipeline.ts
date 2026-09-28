@@ -56,10 +56,12 @@ export function createPassPipeline(options: PassPipelineOptions): PassPipeline {
         states.set(pass, { ...previous, latest: shader, checked });
       }
 
+      // A Pass whose includes don't resolve is checked against the declarations it still runs.
       const { conflicts } = mergeDeclarations(
-        inOrder()
-          .filter(([, state]) => state.checked)
-          .map(([pass, state]) => ({ pass, declarations: state.checked!.declarations })),
+        inOrder().map(([pass, state]) => ({
+          pass,
+          declarations: state.checked?.declarations ?? state.running?.declarations ?? [],
+        })),
       );
 
       for (const [pass, state] of inOrder()) {
@@ -80,8 +82,15 @@ export function createPassPipeline(options: PassPipelineOptions): PassPipeline {
         report(`param:${file}`, paramProblems);
       }
 
-      const running = inOrder().filter(([, state]) => state.running);
-      const { parameters } = mergeDeclarations(running.map(([pass, state]) => ({ pass, declarations: state.running!.declarations })));
+      // Running versions normally agree. If they don't (a Pass whose newer version is blocked
+      // still runs an old declaration), the first one is shown and the renderer skips uploading
+      // to a uniform of another type, rather than the Parameter vanishing from the GUI.
+      const parameters: Declaration[] = [];
+      for (const [, state] of inOrder()) {
+        for (const declaration of state.running?.declarations ?? []) {
+          if (!parameters.some((p) => p.name === declaration.name)) parameters.push(declaration);
+        }
+      }
       const complete = order.every((pass) => {
         const state = states.get(pass);
         return state?.running !== undefined && state.running.shader === state.latest;
