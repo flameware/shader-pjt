@@ -6,7 +6,7 @@
 
 ## 실행
 
-Node `^22.18.0` 또는 `>=23.6.0`이 필요합니다. WebGL2와 float 렌더 타깃(`EXT_color_buffer_float`)을 지원하는 데스크톱 Chrome, Firefox, Safari를 대상으로 합니다.
+Node `^22.18.0` 또는 `>=23.6.0`이 필요합니다. WebGL2와 float 렌더 타깃(`EXT_color_buffer_float`)을 지원하는 데스크톱 브라우저가 필요합니다. Chromium 계열(Arc)과 Safari에서 확인했고, Firefox는 확인하지 않았습니다.
 
 ```sh
 npm install
