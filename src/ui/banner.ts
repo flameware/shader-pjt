@@ -1,5 +1,6 @@
 import type { BannerEntry, BannerView } from './banner-view';
 
+/** The mounted banner element; `render(null)` hides it. */
 export interface Banner {
   render(view: BannerView | null): void;
 }
@@ -13,12 +14,12 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, className: string, te
 
 function list(kind: 'error' | 'warning', entries: BannerEntry[]): HTMLElement {
   const ul = el('ul', `banner-list banner-${kind}s`);
-  for (const { location, message, code } of entries) {
+  for (const { location, message, sourceLine } of entries) {
     const li = el('li', `banner-item banner-${kind}`);
     li.append(el('span', 'banner-label', kind === 'error' ? 'ERROR' : 'WARNING'));
     if (location) li.append(el('span', 'banner-location', location));
     li.append(el('span', 'banner-message', message));
-    if (code) li.append(el('code', 'banner-code', code));
+    if (sourceLine) li.append(el('code', 'banner-code', sourceLine));
     ul.append(li);
   }
   return ul;

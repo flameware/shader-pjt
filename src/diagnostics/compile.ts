@@ -10,7 +10,8 @@ const UNLOCATED = /^(ERROR|WARNING):\s*(.*)$/;
 /** ANGLE's closing tally, e.g. `ERROR: 2 compilation errors.  No code generated.` */
 const SUMMARY = /^(ERROR|WARNING):\s*\d+ compilation (errors?|warnings?)\./;
 
-const EMPTY_LOG_MESSAGE = '컴파일 실패 (드라이버가 로그를 남기지 않음)';
+/** Added when a failed compile's log has no `ERROR` line (empty, warnings only, or unparsed). */
+const NO_ERROR_LINE_MESSAGE = '컴파일 실패 (로그에 에러 줄이 없음)';
 
 /**
  * Turns a failed compile's info log into diagnostics against the original files.
@@ -37,15 +38,14 @@ export function compileDiagnostics(log: string, shader: ShaderSource, prefixLine
     const origin = shader.lines[index];
     if (origin) {
       const [fileIndex, line] = origin;
-      const code = bodyLines[index]?.trim();
-      diagnostics.push({ severity, file: shader.files[fileIndex], line, message, ...(code ? { code } : {}) });
+      diagnostics.push({ severity, file: shader.files[fileIndex], line, message, sourceLine: bodyLines[index]?.trim() || undefined });
     } else {
-      diagnostics.push({ severity, ...(passFile ? { file: passFile } : {}), message });
+      diagnostics.push({ severity, file: passFile, message });
     }
   }
 
   if (!diagnostics.some((d) => d.severity === 'error')) {
-    diagnostics.push({ severity: 'error', ...(passFile ? { file: passFile } : {}), message: EMPTY_LOG_MESSAGE });
+    diagnostics.push({ severity: 'error', file: passFile, message: NO_ERROR_LINE_MESSAGE });
   }
   return diagnostics;
 }

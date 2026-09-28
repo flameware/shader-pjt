@@ -36,6 +36,7 @@ async function start(): Promise<void> {
   // the board to the banner. Compile failures keep the last good program running.
   const diagnostics = createDiagnosticsBoard();
   const banner = mountBanner(document.body);
+  // Reads hasProgram() when notified, so producers must report after they swap the program.
   diagnostics.subscribe((all) => banner.render(bannerView(all, renderer.hasProgram())));
 
   const mainFile = mainPassFile(name);

@@ -1,12 +1,14 @@
 import type { Diagnostic } from '../diagnostics/diagnostic';
 
+/** One line of the banner. */
 export interface BannerEntry {
   /** `file:line`, or just `file` when the line is unknown. */
   location?: string;
   message: string;
-  code?: string;
+  sourceLine?: string;
 }
 
+/** Everything the banner shows; errors and warnings are listed apart so they can look different. */
 export interface BannerView {
   errors: BannerEntry[];
   warnings: BannerEntry[];
@@ -14,9 +16,9 @@ export interface BannerView {
   status: string | null;
 }
 
-function entry({ file, line, message, code }: Diagnostic): BannerEntry {
+function entry({ file, line, message, sourceLine }: Diagnostic): BannerEntry {
   const location = file === undefined ? undefined : line === undefined ? file : `${file}:${line}`;
-  return { ...(location ? { location } : {}), message, ...(code ? { code } : {}) };
+  return { location, message, sourceLine };
 }
 
 /**

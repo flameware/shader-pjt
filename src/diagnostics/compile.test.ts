@@ -34,7 +34,7 @@ describe('compileDiagnostics', () => {
         file: 'sketches/2026-09-28-hello/main.frag',
         line: 2,
         message: "'colr' : undeclared identifier",
-        code: 'vec3 col = colr * 0.5;',
+        sourceLine: 'vec3 col = colr * 0.5;',
       },
     ]);
   });
@@ -66,7 +66,7 @@ describe('compileDiagnostics', () => {
     };
     const { prefixLines: pre } = wrapMainImage(expanded.source);
     const [d] = compileDiagnostics(`ERROR: 0:${pre + 3}: '}' : syntax error`, expanded, pre);
-    expect(d).toMatchObject({ file: 'lib/noise/noise.glsl', line: 5, code: '}' });
+    expect(d).toMatchObject({ file: 'lib/noise/noise.glsl', line: 5, sourceLine: '}' });
   });
 
   it('reports errors on engine lines (outside the body) against the Pass file without a line', () => {
@@ -93,16 +93,19 @@ describe('compileDiagnostics', () => {
         file: 'sketches/2026-09-28-hello/main.frag',
         line: 1,
         message: "'x' : something odd",
-        code: 'void mainImage(out vec4 fragColor, in vec2 fragCoord) {',
+        sourceLine: 'void mainImage(out vec4 fragColor, in vec2 fragCoord) {',
       },
       { severity: 'error', file: 'sketches/2026-09-28-hello/main.frag', message: 'global problem' },
       { severity: 'error', file: 'sketches/2026-09-28-hello/main.frag', message: 'L0001 Fragment shader output not written' },
     ]);
   });
 
-  it('never returns an empty list for a failed compile, even with an empty log', () => {
-    expect(compileDiagnostics('', main, prefixLines)).toEqual([
-      { severity: 'error', file: 'sketches/2026-09-28-hello/main.frag', message: '컴파일 실패 (드라이버가 로그를 남기지 않음)' },
+  it('always includes an error for a failed compile, even when the log has none', () => {
+    const failed = { severity: 'error', file: 'sketches/2026-09-28-hello/main.frag', message: '컴파일 실패 (로그에 에러 줄이 없음)' };
+    expect(compileDiagnostics('', main, prefixLines)).toEqual([failed]);
+    expect(compileDiagnostics('WARNING: 0:?: odd', main, prefixLines)).toEqual([
+      { severity: 'warning', file: 'sketches/2026-09-28-hello/main.frag', message: 'odd' },
+      failed,
     ]);
   });
 });

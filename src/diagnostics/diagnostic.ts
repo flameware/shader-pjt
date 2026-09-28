@@ -12,5 +12,5 @@ export interface Diagnostic {
   /** 1-based line in `file`, when known. */
   line?: number;
   /** The text of the offending source line, trimmed. */
-  code?: string;
+  sourceLine?: string;
 }

@@ -7,7 +7,7 @@ const colr: Diagnostic = {
   file: 'sketches/2026-09-28-hello/main.frag',
   line: 7,
   message: "'colr' : undeclared identifier",
-  code: 'vec3 col = colr * 0.5;',
+  sourceLine: 'vec3 col = colr * 0.5;',
 };
 
 describe('bannerView', () => {
@@ -21,7 +21,7 @@ describe('bannerView', () => {
         {
           location: 'sketches/2026-09-28-hello/main.frag:7',
           message: "'colr' : undeclared identifier",
-          code: 'vec3 col = colr * 0.5;',
+          sourceLine: 'vec3 col = colr * 0.5;',
         },
       ],
       warnings: [],

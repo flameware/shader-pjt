@@ -13,6 +13,7 @@ export interface DiagnosticsBoard {
   subscribe(listener: (all: Diagnostic[]) => void): () => void;
 }
 
+/** An empty board. The app keeps one and hands it to every producer. */
 export function createDiagnosticsBoard(): DiagnosticsBoard {
   const bySource = new Map<string, readonly Diagnostic[]>();
   const listeners = new Set<(all: Diagnostic[]) => void>();
@@ -28,7 +29,9 @@ export function createDiagnosticsBoard(): DiagnosticsBoard {
     all,
     subscribe(listener) {
       listeners.add(listener);
-      return () => listeners.delete(listener);
+      return () => {
+        listeners.delete(listener);
+      };
     },
   };
 }
