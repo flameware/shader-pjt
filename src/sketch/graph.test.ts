@@ -86,6 +86,13 @@ describe('buildPassGraph', () => {
     ]);
   });
 
+  it('rejects a cycle even between Passes that do not run', () => {
+    const config = { passes: { a: { channels: ['b'] }, b: { channels: ['a'] } } };
+    const { graph, diagnostics } = buildPassGraph(input(['a', 'b', 'main'], config));
+    expect(graph).toBeNull();
+    expect(diagnostics).toContainEqual({ severity: 'error', file: `${dir}/sketch.ts`, message: expect.stringContaining('a → b → a') });
+  });
+
   it('rejects a Pass reading itself this frame (use prev() for that)', () => {
     const { graph, diagnostics } = buildPassGraph(input(['a', 'main'], { passes: { main: { channels: ['a'] }, a: { channels: ['a'] } } }));
     expect(graph).toBeNull();

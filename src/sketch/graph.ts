@@ -89,7 +89,7 @@ function parseChannels(name: string, raw: unknown, passNames: readonly string[],
     problems.errors.push(`${where}는 배열이어야 합니다`);
     return [];
   }
-  if (raw.length > MAX_CHANNELS) problems.errors.push(`${where}: Channel은 최대 4개입니다 (iChannel0..3), 지금 ${raw.length}개`);
+  if (raw.length > MAX_CHANNELS) problems.errors.push(`${where}: Channel은 최대 ${MAX_CHANNELS}개입니다 (iChannel0..${MAX_CHANNELS - 1}), 지금 ${raw.length}개`);
   const channels: ChannelRef[] = [];
   raw.slice(0, MAX_CHANNELS).forEach((source: unknown, slot) => {
     const ref: ChannelRef | null =
@@ -177,7 +177,7 @@ function parseConfig(config: unknown, passFiles: Record<string, string>, floatLi
     const raw = passConfigs[name] ?? {};
     if (!isObject(raw)) {
       problems.errors.push(`passes.${name}는 객체여야 합니다`);
-      result.passes[name] = { channels: [], buffer: { ...DEFAULT_BUFFER } };
+      result.passes[name] = { channels: [], buffer: parseBuffer(name, {}, floatLinear, problems) };
       continue;
     }
     unknownKeys(raw, PASS_KEYS, `passes.${name}: `, problems);
@@ -193,7 +193,6 @@ function parseConfig(config: unknown, passFiles: Record<string, string>, floatLi
   return result;
 }
 
-const DEFAULT_BUFFER: BufferSpec = { format: 'rgba16f', filter: 'linear', wrap: 'clamp', size: { scale: 1 } };
 
 /** The Passes that must run for `main`: everything it reads, this frame or through `prev()`, transitively. */
 function reachableFromMain(passes: Record<string, PassNode>): Set<string> {
@@ -272,13 +271,15 @@ export function buildPassGraph({ sketchFile, passFiles, config, floatLinear }: P
     if (running.has(node.name)) continue;
     diagnostics.push({ severity: 'warning', file: node.file, message: `참조되지 않은 Pass '${node.name}': 컴파일만 하고 실행하지 않습니다` });
   }
-  const sorted = topologicalOrder([...running], passes);
+  // Sorting every Pass (not just the running ones) finds cycles among unreferenced Passes too.
+  // Unreferenced Passes never feed running ones, so dropping them leaves the running order as is.
+  const sorted = topologicalOrder(Object.keys(passes), passes);
   if ('cycle' in sorted) {
     const loop = sorted.cycle.join(' → ');
     diagnostics.push({ severity: 'error', file: sketchFile, message: `순환 참조: ${loop} (이전 프레임을 읽으려면 prev()를 쓰세요)` });
     return { graph: null, diagnostics };
   }
-  const graph: PassGraph = { passes, order: sorted.order };
+  const graph: PassGraph = { passes, order: sorted.order.filter((name) => running.has(name)) };
   if (parsed.title !== undefined) graph.title = parsed.title;
   return { graph, diagnostics };
 }

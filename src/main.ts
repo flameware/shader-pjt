@@ -54,8 +54,8 @@ async function start(): Promise<void> {
   if (name === null) return showMessage('sketches/ 폴더에 Sketch가 없습니다.');
   document.title = `${name} · shader playground`;
 
-  // Every problem (compile, pass graph; include and Parameter checks later) goes through the
-  // board to the banner. Compile failures keep the last good program running.
+  // Every problem (compile, include, pass graph; Parameter checks later) goes through the
+  // board to the banner. Compile and include failures keep the last good program running.
   const diagnostics = createDiagnosticsBoard();
   const banner = mountBanner(document.body);
   // Reads isRunning() when notified, so producers must report after they change the engine.

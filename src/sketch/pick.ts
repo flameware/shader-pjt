@@ -1,8 +1,11 @@
 const MAIN_PASS_PATH = /\/sketches\/([^/]+)\/main\.frag$/;
 
-/** Sketch names from the paths of their `main.frag` files, sorted by name (= by date). */
-export function sketchNames(mainPassPaths: readonly string[]): string[] {
-  return mainPassPaths
+/**
+ * Sketch names, sorted by name (= by date): the folders with a top-level `main.frag` among
+ * `fragPaths` (other `.frag` paths are skipped).
+ */
+export function sketchNames(fragPaths: readonly string[]): string[] {
+  return fragPaths
     .map((path) => MAIN_PASS_PATH.exec(path)?.[1])
     .filter((name): name is string => name !== undefined)
     .sort();
