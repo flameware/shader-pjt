@@ -76,7 +76,30 @@ export interface Renderer {
   draw(frame: FrameInputs): void;
 }
 
-export function createRenderer(gl: WebGL2RenderingContext): Renderer {
+/** The Main pass image as `readPixels` returns it (RGBA8, rows bottom-up), and what drew it. */
+export interface MainImage {
+  width: number;
+  height: number;
+  pixels: Uint8Array;
+  /** The inputs of the frame this image is. */
+  frame: FrameInputs;
+  /** Whether any running Pass reads a previous frame. */
+  feedback: boolean;
+}
+
+/** What `createRenderer` makes: a `Renderer` that can also read back the Main pass for Capture. */
+export interface CaptureRenderer extends Renderer {
+  /**
+   * The Main pass of the last frame drawn, as the screen shows it (#8 decision 9, #23), or
+   * `null` before anything is drawn. It is drawn into a temporary `RGBA8` target and read there:
+   * a Feedback buffer through the display's clamp, otherwise by running main again with that
+   * frame's inputs (RGBA8 clamps like the canvas). Works any time, also while a paused Feedback
+   * Sketch isn't redrawn.
+   */
+  readMain(): MainImage | null;
+}
+
+export function createRenderer(gl: WebGL2RenderingContext): CaptureRenderer {
   // The fullscreen triangle needs no attributes, but a bound VAO keeps every driver happy.
   gl.bindVertexArray(gl.createVertexArray());
   const blank = createBlankTexture(gl);
@@ -129,28 +152,38 @@ export function createRenderer(gl: WebGL2RenderingContext): Renderer {
    */
   const runPasses = (current: PassGraph, frame: FrameInputs, passBuffers: Map<string, PassBuffer>) => {
     for (const name of current.order) {
-      const node = current.passes[name]!;
-      const { program, uniforms: u, parameters } = programs.get(name)!;
       const buffer = passBuffers.get(name);
-      const target = buffer?.targets[buffer.slots.write()];
-      const [width, height] = target ? [target.width, target.height] : [frame.width, frame.height];
-
-      gl.bindFramebuffer(gl.FRAMEBUFFER, target?.framebuffer ?? null);
-      gl.viewport(0, 0, width, height);
-      gl.useProgram(program);
-      gl.uniform3f(u.iResolution, width, height, 1);
-      gl.uniform1f(u.iTime, frame.time);
-      gl.uniform1f(u.iTimeDelta, frame.timeDelta);
-      gl.uniform1i(u.iFrame, frame.frame);
-      gl.uniform4f(u.iMouse, ...frame.mouse);
-      setParameterUniforms(gl, parameters, frame.parameters ?? []);
-      bindChannels(node, u, passBuffers);
-      drawFullscreen(gl);
+      drawPass(current.passes[name]!, buffer?.targets[buffer.slots.write()] ?? null, frame, passBuffers);
       buffer?.slots.written();
     }
   };
 
+  /** Draws one Pass into `target` (`null`: the canvas, at the frame's size), reading its Channels from `passBuffers`. */
+  const drawPass = (node: PassNode, target: Target | null, frame: FrameInputs, passBuffers: Map<string, PassBuffer>) => {
+    const { program, uniforms: u, parameters } = programs.get(node.name)!;
+    const [width, height] = target ? [target.width, target.height] : [frame.width, frame.height];
+    gl.bindFramebuffer(gl.FRAMEBUFFER, target?.framebuffer ?? null);
+    gl.viewport(0, 0, width, height);
+    gl.useProgram(program);
+    gl.uniform3f(u.iResolution, width, height, 1);
+    gl.uniform1f(u.iTime, frame.time);
+    gl.uniform1f(u.iTimeDelta, frame.timeDelta);
+    gl.uniform1i(u.iFrame, frame.frame);
+    gl.uniform4f(u.iMouse, ...frame.mouse);
+    setParameterUniforms(gl, parameters, frame.parameters ?? []);
+    bindChannels(node, u, passBuffers);
+    drawFullscreen(gl);
+  };
+
   const isRunning = () => graph !== null && graph.order.every((name) => programs.has(name));
+  /** The inputs of the last frame drawn, for `readMain`. */
+  let drawn: FrameInputs | null = null;
+
+  const readPixels = (width: number, height: number) => {
+    const pixels = new Uint8Array(width * height * 4);
+    gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+    return pixels;
+  };
 
   return {
     setShader(pass, shader) {
@@ -168,6 +201,7 @@ export function createRenderer(gl: WebGL2RenderingContext): Renderer {
 
     setGraph(next) {
       freeBuffers();
+      drawn = null;
       graph = next;
       for (const [name, entry] of programs) {
         if (next?.passes[name]) continue;
@@ -194,6 +228,7 @@ export function createRenderer(gl: WebGL2RenderingContext): Renderer {
 
     draw(frame) {
       if (!graph || !isRunning()) return;
+      drawn = frame;
       for (const buffer of buffers.values()) {
         fitBuffer(buffer, frame.width, frame.height);
         buffer.slots.beginFrame();
@@ -209,6 +244,34 @@ export function createRenderer(gl: WebGL2RenderingContext): Renderer {
         gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(gl.TEXTURE_2D, main.targets[main.slots.current()]!.texture);
         drawFullscreen(gl);
+      }
+    },
+
+    readMain() {
+      if (!graph || !isRunning() || !drawn) return null;
+      const feedback = graph.order.some((name) => graph!.passes[name]!.feedback);
+      const main = buffers.get('main');
+      const source = main?.targets[main.slots.current()];
+      const [width, height] = source ? [source.width, source.height] : [drawn.width, drawn.height];
+      const target = createTarget(gl, { format: 'rgba8', filter: 'nearest', wrap: 'clamp' }, width, height);
+      try {
+        if (source) {
+          // The display's clamp, into RGBA8 instead of the canvas.
+          gl.bindFramebuffer(gl.FRAMEBUFFER, target.framebuffer);
+          gl.viewport(0, 0, width, height);
+          gl.useProgram(present.program);
+          gl.activeTexture(gl.TEXTURE0);
+          gl.bindTexture(gl.TEXTURE_2D, source.texture);
+          drawFullscreen(gl);
+        } else {
+          // Main again with the same inputs; the buffers it reads are as they were for that frame.
+          drawPass(graph.passes.main!, target, drawn, buffers);
+        }
+        gl.bindFramebuffer(gl.FRAMEBUFFER, target.framebuffer);
+        return { width, height, pixels: readPixels(width, height), frame: drawn, feedback };
+      } finally {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        deleteTarget(gl, target);
       }
     },
   };

@@ -1,0 +1,37 @@
+/* Capture feedback (#9 decision 8): a short white flash, and a toast with a thumbnail and the path. */
+.capture-flash {
+  position: fixed;
+  inset: 0;
+  z-index: 19;
+  background: #fff;
+  opacity: 0;
+  pointer-events: none;
+}
+.capture-flash-go {
+  animation: capture-flash 0.25s;
+}
+@keyframes capture-flash {
+  from {
+    opacity: 0.5;
+  }
+  to {
+    opacity: 0;
+  }
+}
+.capture-toast {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.capture-toast img {
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+  background: #000;
+  border-radius: 4px;
+}
+.capture-toast-path {
+  font: 12px ui-monospace, Menlo, monospace;
+  color: #aaa;
+  word-break: break-all;
+}

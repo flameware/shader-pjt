@@ -7,6 +7,7 @@ import { createEngine } from './engine/engine';
 import { createMouse, toRenderPixel } from './engine/mouse';
 import { createRenderer } from './engine/renderer';
 import { canvasLayout } from './output/layout';
+import { effectiveRenderScale } from './output/output-size';
 import { placeCanvas } from './output/place-canvas';
 import { createOutputSettings } from './output/settings';
 import { UNSUPPORTED_MESSAGE, hasFloatLinear, missingRequiredFeature } from './gl/features';
@@ -22,6 +23,7 @@ import { mountBanner } from './ui/banner';
 import { mountParameterPanel } from './ui/parameter-panel';
 import { bannerView } from './ui/banner-view';
 import { mountBrowserUi } from './ui/browser-ui';
+import { mountScreenCapture } from './ui/capture';
 import { mountOutputBadge } from './ui/output-badge';
 import { mountOutputFolder } from './ui/output-folder';
 import { mountSketchPicker } from './ui/sketch-picker';
@@ -60,7 +62,8 @@ async function start(): Promise<void> {
   const canvas = document.querySelector('canvas')!;
   const gl = canvas.getContext('webgl2', { alpha: false, antialias: false, depth: false, stencil: false });
   if (gl === null || missingRequiredFeature(gl) !== null) return showMessage(UNSUPPORTED_MESSAGE);
-  const engine = createEngine(createRenderer(gl), createClock());
+  const renderer = createRenderer(gl);
+  const engine = createEngine(renderer, createClock());
 
   // `?sketch=<name>` picks the Sketch and is written back (#20). Switching rewrites it and reloads.
   const names = sketchNames(Object.keys(fragModules));
@@ -104,6 +107,14 @@ async function start(): Promise<void> {
   output.subscribe(() => engine.reset());
   mountOutputFolder(panel.pane, output, () => [canvas.width, canvas.height]);
   mountOutputBadge(ui.hud.topLeft, output);
+
+  // Screen Capture (#23): `C` and the panel's Capture folder (after Output, as in #9); taken right after a frame is drawn.
+  const capture = mountScreenCapture(ui, panel.pane, {
+    sketch: name,
+    readMain: () => renderer.readMain(),
+    parameters: () => parameters.list(),
+    output: () => ({ output: output.output(), renderScale: effectiveRenderScale(output.output(), output.renderScale()) }),
+  });
 
   // Every Pass compiles, including ones that don't run, so their errors show too. Include and
   // Parameter errors block a Pass's new version like a compile failure does.
@@ -156,6 +167,7 @@ async function start(): Promise<void> {
     }
     const tick = engine.frame(now, { width, height, mouse: mouse.value(), parameters: parameters.uniforms() });
     ui.frame(tick, now);
+    capture.frame();
     mouse.endFrame();
     requestAnimationFrame(frame);
   };
