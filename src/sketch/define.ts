@@ -4,6 +4,8 @@
  * value at runtime (`buildPassGraph`), since a typo in a `.ts` file only shows up in the editor.
  */
 
+import type { OutputSize } from '../output/output-size';
+
 /** Reads a Pass's output from the previous frame (Feedback). Zero until the Pass has run once. */
 export interface PrevRef {
   readonly prev: string;
@@ -25,7 +27,7 @@ export interface PassConfig {
   filter?: BufferFilter;
   /** Default `clamp`. */
   wrap?: BufferWrap;
-  /** Size relative to the canvas; default 1. Not allowed together with `size`, nor on `main`. */
+  /** Size relative to the render size (the working resolution); default 1. Not allowed together with `size`, nor on `main`. */
   scale?: number;
   /** Fixed size in pixels. Not allowed together with `scale`, nor on `main`. */
   size?: [number, number];
@@ -33,6 +35,12 @@ export interface PassConfig {
 
 export interface SketchConfig {
   title?: string;
+  /**
+   * The default Output size: `'window'` (default), a preset (`'1:1'` 2160×2160, `'4:5'` 2160×2700,
+   * `'9:16'` 2160×3840, `'16:9'` 3840×2160) or `[w, h]` in pixels. The user's choice in the
+   * panel is remembered per Sketch and wins over this until this default changes.
+   */
+  output?: OutputSize;
   /** Keyed by Pass name (the `.frag` file name without extension). */
   passes?: Record<string, PassConfig>;
 }

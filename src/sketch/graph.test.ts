@@ -103,6 +103,9 @@ describe('buildPassGraph', () => {
     const cases: [string, unknown, string][] = [
       ['a default export that is not an object', null, 'export default defineSketch'],
       ['a non-string title', { title: 3 }, 'title'],
+      ['an unknown Output size', { output: '3:2' }, 'Output size'],
+      ['an Output size that is not two positive integers', { output: [2160, 0] }, 'Output size'],
+      ['an Output size over 4096 a side', { output: [8192, 1024] }, '4096'],
       ['an unknown top-level key', { pass: {} }, "알 수 없는 키 'pass'"],
       ['passes that is not an object', { passes: [] }, 'passes'],
       ['options for a Pass with no .frag', { passes: { blurr: {} } }, "'blurr'"],
@@ -165,6 +168,12 @@ describe('buildPassGraph', () => {
       const { graph } = buildPassGraph(input(['main'], { passes: { main: { channels: [prev('main')], wrap: 'repeat' } } }));
       expect(graph?.passes.main?.buffer).toEqual({ format: 'rgba16f', filter: 'linear', wrap: 'repeat', size: { scale: 1 } });
     });
+  });
+
+  it('passes the Output size default through', () => {
+    expect(buildPassGraph(input(['main'], { output: '4:5' })).graph?.output).toBe('4:5');
+    expect(buildPassGraph(input(['main'], { output: [640, 480] })).graph?.output).toEqual([640, 480]);
+    expect(buildPassGraph(input(['main'])).graph?.output).toBeUndefined();
   });
 
   it('passes the title through', () => {

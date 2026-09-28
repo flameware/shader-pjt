@@ -43,11 +43,21 @@ export function deleteTarget(gl: WebGL2RenderingContext, target: Target): void {
   gl.deleteTexture(target.texture);
 }
 
-/** Fills the target with 0 (used by reset, so Feedback starts from black). */
-export function clearTarget(gl: WebGL2RenderingContext, target: Target): void {
-  gl.bindFramebuffer(gl.FRAMEBUFFER, target.framebuffer);
-  gl.clearBufferfv(gl.COLOR, 0, [0, 0, 0, 0]);
-  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+/**
+ * A new target of the given size holding `source`'s picture resampled to fit, with the
+ * target's own filter (`linear`, or `nearest` where the Sketch asked for it or the device
+ * can't filter 32F). `source` is deleted. Used when the working resolution changes but the
+ * Sketch keeps running, so Feedback carries on at the new size (#8 decision 4).
+ */
+export function resampleTarget(gl: WebGL2RenderingContext, source: Target, options: TargetOptions, width: number, height: number): Target {
+  const target = createTarget(gl, options, width, height);
+  gl.bindFramebuffer(gl.READ_FRAMEBUFFER, source.framebuffer);
+  gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, target.framebuffer);
+  gl.blitFramebuffer(0, 0, source.width, source.height, 0, 0, width, height, gl.COLOR_BUFFER_BIT, FILTER[options.filter]);
+  gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
+  gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
+  deleteTarget(gl, source);
+  return target;
 }
 
 /** A 1×1 transparent black texture, bound to Channels a Pass doesn't connect. */

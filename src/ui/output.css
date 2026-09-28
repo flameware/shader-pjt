@@ -1,0 +1,12 @@
+/* Output size (#22): the letterboxed canvas and the badge next to the Sketch name. */
+canvas.letterboxed {
+  box-shadow: 0 0 0 1px #1c1c20;
+}
+.output-badge {
+  padding: 1px 7px;
+  border-radius: 9px;
+  font: 11px/1.6 ui-monospace, Menlo, monospace;
+  color: #999;
+  background: #26262c;
+  white-space: nowrap;
+}

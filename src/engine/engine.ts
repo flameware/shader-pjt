@@ -5,7 +5,10 @@ import type { Clock, ClockTick } from './clock';
 import type { Renderer, SwapResult } from './renderer';
 
 export interface FrameSize {
-  /** Canvas size in device pixels. */
+  /**
+   * The render size (working resolution) in device pixels. A change on its own (a window resize
+   * under `fit`) keeps time and Feedback; a new Output size or render scale also calls `reset()`.
+   */
   width: number;
   height: number;
   mouse: readonly [number, number, number, number];

@@ -1,4 +1,5 @@
 import type { Diagnostic } from '../diagnostics/diagnostic';
+import { MAX_OUTPUT_SIDE, OUTPUT_PRESETS, type OutputSize, parseOutputSize } from '../output/output-size';
 import type { BufferFilter, BufferFormat, BufferWrap } from './define';
 
 /** A resolved Channel: the Pass it reads, and whether it reads last frame's output (`prev()`). */
@@ -7,7 +8,7 @@ export interface ChannelRef {
   prev: boolean;
 }
 
-/** How big a Pass's buffer is: relative to the canvas, or fixed pixels. */
+/** How big a Pass's buffer is: relative to the render size, or fixed pixels. */
 export type BufferSize = { scale: number } | { size: [number, number] };
 
 export interface BufferSpec {
@@ -31,6 +32,8 @@ export interface PassNode {
 
 export interface PassGraph {
   title?: string;
+  /** The `sketch.ts` default Output size (#8 decision 1); `window` when absent. */
+  output?: OutputSize;
   /** Every Pass of the Sketch, including ones that don't run (they are still compiled). */
   passes: Record<string, PassNode>;
   /** The Passes that run each frame, in order; `main` is always last. */
@@ -60,9 +63,9 @@ export const MAX_CHANNELS = 4;
 const FORMATS: readonly BufferFormat[] = ['rgba8', 'rgba16f', 'rgba32f'];
 const FILTERS: readonly BufferFilter[] = ['linear', 'nearest'];
 const WRAPS: readonly BufferWrap[] = ['clamp', 'repeat', 'mirror'];
-const SKETCH_KEYS = ['title', 'passes'];
+const SKETCH_KEYS = ['title', 'output', 'passes'];
 const PASS_KEYS = ['channels', 'format', 'filter', 'wrap', 'scale', 'size'];
-/** The Main pass is drawn at canvas size, and its Feedback buffer is always `rgba16f` (#5). */
+/** The Main pass is drawn at the render size, and its Feedback buffer is always `rgba16f` (#5). */
 const NOT_ON_MAIN = ['format', 'scale', 'size'];
 
 type Raw = Record<string, unknown>;
@@ -155,7 +158,7 @@ function parseBuffer(name: string, raw: Raw, floatLinear: boolean, problems: Pro
 /** Reads the `sketch.ts` value into per-Pass Channels and buffers. Passes it doesn't mention get the defaults. */
 function parseConfig(config: unknown, passFiles: Record<string, string>, floatLinear: boolean, problems: Problems) {
   const passNames = Object.keys(passFiles);
-  const result: { title?: string; passes: Record<string, { channels: ChannelRef[]; buffer: BufferSpec }> } = { passes: {} };
+  const result: { title?: string; output?: OutputSize; passes: Record<string, { channels: ChannelRef[]; buffer: BufferSpec }> } = { passes: {} };
   let passConfigs: Raw = {};
 
   if (config !== undefined) {
@@ -165,6 +168,11 @@ function parseConfig(config: unknown, passFiles: Record<string, string>, floatLi
       unknownKeys(config, SKETCH_KEYS, '', problems);
       if (config.title !== undefined && typeof config.title !== 'string') problems.errors.push('title은 문자열이어야 합니다');
       else if (typeof config.title === 'string') result.title = config.title;
+      if (config.output !== undefined) {
+        const output = parseOutputSize(config.output);
+        if (output !== undefined) result.output = output;
+        else problems.errors.push(`output: Output size는 'window', ${quoteAll(Object.keys(OUTPUT_PRESETS))} 중 하나이거나 ${MAX_OUTPUT_SIDE} 이하의 양의 정수 두 개 [너비, 높이]여야 합니다`);
+      }
       if (config.passes !== undefined && !isObject(config.passes)) problems.errors.push('passes는 { 이름: { ... } } 객체여야 합니다');
       else if (isObject(config.passes)) passConfigs = config.passes;
     }
@@ -281,5 +289,6 @@ export function buildPassGraph({ sketchFile, passFiles, config, floatLinear }: P
   }
   const graph: PassGraph = { passes, order: sorted.order.filter((name) => running.has(name)) };
   if (parsed.title !== undefined) graph.title = parsed.title;
+  if (parsed.output !== undefined) graph.output = parsed.output;
   return { graph, diagnostics };
 }
