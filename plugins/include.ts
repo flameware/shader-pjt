@@ -35,7 +35,10 @@ interface Root {
 
 const ROOT_NAME: Record<Root['kind'], string> = { sketch: 'Sketch 폴더', lib: 'lib/', lygia: 'lygia 패키지' };
 
-/** Text-only on purpose: a `//`-commented include doesn't start with `#`, and `#if` is not tracked. */
+/**
+ * Text-only on purpose (#7): a `//`-commented include doesn't start with `#`, while `/* *\/`
+ * block comments and `#if` are not tracked, so includes inside them are still expanded.
+ */
 const INCLUDE = /^\s*#\s*include\b(.*)$/;
 /** `"path"`, optionally followed by a `//` comment. */
 const QUOTED = /^"([^"]*)"\s*(\/\/.*)?$/;
@@ -90,7 +93,8 @@ function findExact(dir: string, abs: string): 'found' | 'missing' | { actual: st
     }
     current = path.join(current, name);
   }
-  if (!fs.statSync(current).isFile()) return 'missing';
+  // statSync follows symlinks, so a dangling link throws; that is a missing file too.
+  if (!fs.statSync(current, { throwIfNoEntry: false })?.isFile()) return 'missing';
   return caseDiffers ? { actual: current } : 'found';
 }
 
@@ -175,7 +179,8 @@ export function expandPass(passFile: string, code: string, roots: IncludeRoots):
           includeChain: withChain && chain.length > 0 ? chain : undefined,
         });
 
-      if (VERSION.test(lineText)) return fail('#version은 엔진이 붙입니다. 이 줄을 지우세요');
+      // Only the user's own files are checked; lygia never has #version (#7).
+      if (root.kind !== 'lygia' && VERSION.test(lineText)) return fail('#version은 엔진이 붙입니다. 이 줄을 지우세요');
       const include = INCLUDE.exec(lineText);
       if (!include) {
         source.push(lineText);

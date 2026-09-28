@@ -193,6 +193,19 @@ describe('expandPass resolve errors', () => {
     }
   });
 
+  it('reports a dangling symlink as a missing file', () => {
+    const tmp = fs.mkdtempSync(join(os.tmpdir(), 'include-'));
+    try {
+      fs.mkdirSync(join(tmp, 'sketches/s'), { recursive: true });
+      fs.symlinkSync(join(tmp, 'gone.glsl'), join(tmp, 'sketches/s/link.glsl'));
+      const tmpRoots = { project: tmp, lib: join(tmp, 'lib'), lygia: join(tmp, 'node_modules/lygia') };
+      const { shader } = expandPass(join(tmp, 'sketches/s/main.frag'), '#include "link.glsl"\n', tmpRoots);
+      expect(shader.resolveErrors?.map((e) => e.message)).toEqual(['파일 없음: "link.glsl"']);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
   it('keeps going after an error, so every problem in the Pass is reported at once', () => {
     const errors = expand('#include "a.glsl"\n#include "common.glsl"\n#include "b.glsl"\n').shader.resolveErrors;
     expect(errors?.map((e) => e.line)).toEqual([1, 3]);

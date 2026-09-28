@@ -45,7 +45,10 @@ async function start(): Promise<void> {
     // Its compile errors (if any) belonged to an older version, so they are cleared.
     const resolveErrors = shader.resolveErrors ?? [];
     diagnostics.report(`include:${mainFile}`, resolveErrors);
-    if (resolveErrors.length > 0) return diagnostics.report(`compile:${mainFile}`, []);
+    if (resolveErrors.length > 0) {
+      diagnostics.report(`compile:${mainFile}`, []);
+      return;
+    }
     const result = renderer.setShader(shader);
     if (!result.ok) console.error(`[shader] ${mainFile} failed to compile:\n${result.log}`);
     diagnostics.report(`compile:${mainFile}`, result.ok ? [] : compileDiagnostics(result.log, shader, result.prefixLines));

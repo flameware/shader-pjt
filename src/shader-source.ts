@@ -1,3 +1,4 @@
+// With the extension: the Vite plugin loads this file through Node too (for `includeChain`).
 import type { Diagnostic } from './diagnostics/diagnostic.ts';
 
 /**

@@ -1,5 +1,5 @@
 import path from 'node:path';
-import type { Plugin } from 'vite';
+import { normalizePath, type Plugin } from 'vite';
 import { expandPass, type IncludeRoots } from './include.ts';
 
 /**
@@ -57,7 +57,7 @@ export function shaderPlugin(): Plugin {
       const { shader, watchFiles, missingFiles } = expandPass(file, code, roots);
       for (const watched of watchFiles) this.addWatchFile(watched);
       for (const passes of dependents.values()) passes.delete(file);
-      for (const dep of [...watchFiles, ...missingFiles]) {
+      for (const dep of [...watchFiles, ...missingFiles].map(normalizePath)) {
         const passes = dependents.get(dep) ?? new Set<string>();
         dependents.set(dep, passes.add(file));
       }
