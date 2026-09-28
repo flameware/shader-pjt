@@ -16,18 +16,21 @@ import { browserStorage, createParameterValues, memoryStorage } from './params/v
 import type { ShaderSource } from './shader-source';
 import { sketchConfigFile, sketchPassFiles } from './sketch/files';
 import { buildPassGraph } from './sketch/graph';
-import { pickSketch, sketchNames } from './sketch/pick';
+import { sketchNames } from './sketch/pick';
+import { browserSwitchPage, createSketchSwitch } from './sketch/switch';
 import { mountBanner } from './ui/banner';
 import { mountParameterPanel } from './ui/parameter-panel';
 import { bannerView } from './ui/banner-view';
 import { mountBrowserUi } from './ui/browser-ui';
 import { mountOutputBadge } from './ui/output-badge';
 import { mountOutputFolder } from './ui/output-folder';
+import { mountSketchPicker } from './ui/sketch-picker';
 
 // Vite needs literal globs. Every .frag is listed (subfolder ones only to warn about them); a
 // module is only fetched when its Sketch is opened. Adding, removing or renaming a .frag or a
 // sketch.ts, or editing a sketch.ts, changes these globs or modules that nothing accepts, so Vite
-// reloads the page: that is the pass-graph rebuild and reset (#5 decision 9).
+// reloads the page: that is the pass-graph rebuild and reset (#5 decision 9). A new Sketch folder
+// reloads the same way; `plugins/sketch-watch.ts` announces it first so the reload opens it (#20).
 const fragModules = import.meta.glob<ShaderSource>('/sketches/**/*.frag', { import: 'default' });
 const sketchModules = import.meta.glob<Record<string, unknown>>('/sketches/*/sketch.ts');
 
@@ -59,7 +62,10 @@ async function start(): Promise<void> {
   if (gl === null || missingRequiredFeature(gl) !== null) return showMessage(UNSUPPORTED_MESSAGE);
   const engine = createEngine(createRenderer(gl), createClock());
 
-  const name = pickSketch(sketchNames(Object.keys(fragModules)), new URLSearchParams(location.search).get('sketch'));
+  // `?sketch=<name>` picks the Sketch and is written back (#20). Switching rewrites it and reloads.
+  const names = sketchNames(Object.keys(fragModules));
+  const sketchSwitch = createSketchSwitch(browserSwitchPage());
+  const { name, notice } = sketchSwitch.open(names);
   if (name === null) return showMessage('sketches/ 폴더에 Sketch가 없습니다.');
   document.title = `${name} · shader playground`;
 
@@ -72,6 +78,9 @@ async function start(): Promise<void> {
   // HUD, play bar, toasts and the keymap (#18). Later features mount into `ui.hud` regions,
   // add keys with `ui.keymap.add` and notify with `ui.toasts.show`.
   const ui = mountBrowserUi(document.body, engine);
+  // Sketch name, palette, `[`/`]` and the switch to a new Sketch folder (#20).
+  const picker = mountSketchPicker(document.body, ui, { names, current: name, sketchSwitch });
+  if (notice !== null) ui.toasts.show(notice);
 
   const { passFiles, diagnostics: fileProblems } = sketchPassFiles(name, Object.keys(fragModules));
   const loaded = await loadSketchConfig(name);
@@ -80,6 +89,7 @@ async function start(): Promise<void> {
       ? { graph: null, diagnostics: [] }
       : buildPassGraph({ sketchFile: sketchConfigFile(name), passFiles, config: loaded.config, floatLinear: hasFloatLinear(gl) });
   engine.setGraph(built.graph);
+  picker.setFeedback(engine.hasFeedback());
   if (built.graph?.title) document.title = `${built.graph.title} · shader playground`;
   diagnostics.report('graph', [...fileProblems, ...loaded.diagnostics, ...built.diagnostics]);
 

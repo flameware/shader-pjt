@@ -1,4 +1,4 @@
-const MAIN_PASS_PATH = /\/sketches\/([^/]+)\/main\.frag$/;
+const MAIN_PASS_PATH = /^\/sketches\/([^/]+)\/main\.frag$/;
 
 /**
  * Sketch names, sorted by name (= by date): the folders with a top-level `main.frag` among

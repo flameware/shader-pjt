@@ -1,6 +1,4 @@
-import { type Keymap, keyLabel } from './keymap';
-
-const isMac = () => /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+import { type Keymap, isMac, keyLabel } from './keymap';
 
 /**
  * The shortcut table (`?`), built from whatever is registered in the keymap when it opens, so

@@ -2,9 +2,10 @@
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import { shaderPlugin } from './plugins/shader.ts';
+import { sketchWatchPlugin } from './plugins/sketch-watch.ts';
 
 export default defineConfig({
-  plugins: [shaderPlugin()],
+  plugins: [shaderPlugin(), sketchWatchPlugin()],
   resolve: {
     // `sketch.ts` imports defineSketch/prev from 'playground' (#12); keep in step with tsconfig paths.
     alias: { playground: fileURLToPath(new URL('./src/sketch/define.ts', import.meta.url)) },

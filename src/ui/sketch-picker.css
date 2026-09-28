@@ -1,0 +1,90 @@
+/* Sketch name button and badges, in the HUD's top left (#9 decision 4). */
+.sketch-name {
+  padding: 5px 10px;
+  border-radius: 8px;
+  font: 600 14px/1.4 system-ui, sans-serif;
+  color: #eee;
+  cursor: pointer;
+}
+.sketch-name:hover {
+  border-color: #3a3a44;
+}
+.sketch-badge {
+  padding: 1px 7px;
+  border-radius: 9px;
+  font-size: 11px;
+  background: #26262c;
+  color: #999;
+}
+.sketch-badge[hidden] {
+  display: none;
+}
+.sketch-badge-feedback {
+  background: #3a2a10;
+  color: #ffb65c;
+}
+
+/* The palette: outside the HUD, like the shortcut table, so it opens with the HUD off. */
+.sketch-palette {
+  position: fixed;
+  inset: 0;
+  z-index: 25;
+  background: rgba(0, 0, 0, 0.4);
+}
+.sketch-palette[hidden] {
+  display: none;
+}
+.sketch-palette-box {
+  position: absolute;
+  top: 14%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(440px, calc(100% - 32px));
+  max-height: 60%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 10px;
+  background: #17171a;
+  border: 1px solid #2a2a30;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+}
+.sketch-palette-input {
+  padding: 8px 10px;
+  font: 14px system-ui, sans-serif;
+  color: #eee;
+  background: #0f0f12;
+  border: 1px solid #2a2a30;
+  border-radius: 6px;
+  outline: none;
+}
+.sketch-palette-input:focus {
+  border-color: #3d4f7a;
+}
+.sketch-palette-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow: auto;
+}
+.sketch-palette-list li {
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font: 13px ui-monospace, Menlo, monospace;
+}
+.sketch-palette-list li.selected {
+  background: #1f1f24;
+}
+.sketch-palette-list li.current {
+  color: #7aa2ff;
+}
+.sketch-palette-list li.current::after {
+  content: ' · 현재';
+  color: #666;
+}
+.sketch-palette-list li.sketch-palette-empty {
+  color: #777;
+  cursor: default;
+}
