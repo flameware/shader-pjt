@@ -1,5 +1,5 @@
 import type { Diagnostic } from '../diagnostics/diagnostic';
-import { OUTPUT_PRESETS, type OutputSize, parseOutputSize } from '../output/output-size';
+import { MAX_OUTPUT_SIDE, OUTPUT_PRESETS, type OutputSize, parseOutputSize } from '../output/output-size';
 import type { BufferFilter, BufferFormat, BufferWrap } from './define';
 
 /** A resolved Channel: the Pass it reads, and whether it reads last frame's output (`prev()`). */
@@ -171,7 +171,7 @@ function parseConfig(config: unknown, passFiles: Record<string, string>, floatLi
       if (config.output !== undefined) {
         const output = parseOutputSize(config.output);
         if (output !== undefined) result.output = output;
-        else problems.errors.push(`output: Output size는 'window', ${quoteAll(Object.keys(OUTPUT_PRESETS))} 중 하나이거나 양의 정수 두 개 [너비, 높이]여야 합니다`);
+        else problems.errors.push(`output: Output size는 'window', ${quoteAll(Object.keys(OUTPUT_PRESETS))} 중 하나이거나 ${MAX_OUTPUT_SIDE} 이하의 양의 정수 두 개 [너비, 높이]여야 합니다`);
       }
       if (config.passes !== undefined && !isObject(config.passes)) problems.errors.push('passes는 { 이름: { ... } } 객체여야 합니다');
       else if (isObject(config.passes)) passConfigs = config.passes;

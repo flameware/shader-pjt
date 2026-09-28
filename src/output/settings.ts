@@ -33,7 +33,7 @@ export interface OutputSettings {
 
 interface Stored {
   /** `outputKey` of the `sketch.ts` default the choice was made against. */
-  default: string;
+  defaultKey: string;
   output: OutputSize;
   renderScale: RenderScale;
 }
@@ -58,7 +58,7 @@ export function createOutputSettings(sketch: string, storage: Storage, sketchDef
   let output = sketchDefault;
   let scale: RenderScale = 'fit';
   const stored = read(storage, key);
-  if (stored.default === outputKey(sketchDefault)) {
+  if (stored.defaultKey === outputKey(sketchDefault)) {
     const storedOutput = parseOutputSize(stored.output);
     if (offered(storedOutput)) output = storedOutput;
     if (isRenderScale(stored.renderScale)) scale = effectiveRenderScale(output, stored.renderScale);
@@ -67,7 +67,7 @@ export function createOutputSettings(sketch: string, storage: Storage, sketchDef
   const listeners = new Set<() => void>();
   const changed = () => {
     try {
-      const value: Stored = { default: outputKey(sketchDefault), output, renderScale: scale };
+      const value: Stored = { defaultKey: outputKey(sketchDefault), output, renderScale: scale };
       storage.setItem(key, JSON.stringify(value));
     } catch {
       // kept in memory only

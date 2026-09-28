@@ -27,7 +27,9 @@ export type RenderScale = 'fit' | 'full';
 export const DEFAULT_OUTPUT: OutputSize = 'window';
 
 const isPreset = (value: unknown): value is OutputPreset => typeof value === 'string' && Object.hasOwn(OUTPUT_PRESETS, value);
-const isPixels = (n: unknown) => Number.isInteger(n) && (n as number) > 0;
+/** The longest side a custom `[w, h]` may have: the presets' limit, so `full` never needs tiling (#8 decision 2). */
+export const MAX_OUTPUT_SIDE = 4096;
+const isPixels = (n: unknown) => Number.isInteger(n) && (n as number) > 0 && (n as number) <= MAX_OUTPUT_SIDE;
 
 /** The value if it is valid Output size notation, otherwise `undefined`. */
 export function parseOutputSize(value: unknown): OutputSize | undefined {

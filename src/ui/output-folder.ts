@@ -1,5 +1,5 @@
 import type { Pane } from 'tweakpane';
-import { outputKey, outputLabel } from '../output/output-size';
+import { isRenderScale, outputKey, outputLabel } from '../output/output-size';
 import type { OutputSettings } from '../output/settings';
 
 /**
@@ -23,7 +23,7 @@ export function mountOutputFolder(pane: Pane, settings: OutputSettings, renderSi
       return settings.renderScale();
     },
     set renderScale(scale: string) {
-      if (scale === 'fit' || scale === 'full') settings.setRenderScale(scale);
+      if (isRenderScale(scale)) settings.setRenderScale(scale);
     },
     get iResolution() {
       const [w, h] = renderSize();

@@ -8,6 +8,7 @@ describe('canvasLayout', () => {
     expect(canvasLayout({ viewport: [800, 600], dpr: 1.5, output: 'window', renderScale: 'fit' })).toEqual({
       css: { left: 0, top: 0, width: 800, height: 600 },
       render: [1200, 900],
+      letterboxed: false,
     });
   });
 
@@ -24,6 +25,7 @@ describe('canvasLayout', () => {
     const layout = canvasLayout({ viewport: [1000, 500 + 2 * M], dpr: 1, output: '4:5', renderScale: 'fit' });
     expect(layout.css).toEqual({ left: 300, top: M, width: 400, height: 500 });
     expect(layout.render).toEqual([400, 500]);
+    expect(layout.letterboxed).toBe(true);
   });
 
   it('a wide preset in a tall window is letterboxed: full width, centred', () => {

@@ -42,7 +42,7 @@ describe('output settings', () => {
 
   it('ignores a stored value it cannot read', () => {
     const storage = memoryStorage();
-    storage.setItem('shader-playground:output:a', '{"default":"window","output":"3:2","renderScale":"huge"}');
+    storage.setItem('shader-playground:output:a', '{"defaultKey":"window","output":"3:2","renderScale":"huge"}');
     const settings = createOutputSettings('a', storage);
     expect(settings.output()).toBe('window');
     expect(settings.renderScale()).toBe('fit');

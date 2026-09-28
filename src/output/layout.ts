@@ -17,6 +17,8 @@ export interface CanvasLayout {
   css: { left: number; top: number; width: number; height: number };
   /** The working resolution: the canvas's pixel size, and `iResolution` of the Main pass. */
   render: readonly [number, number];
+  /** True for a fixed Output size, whose box is centred with bars around it. */
+  letterboxed: boolean;
 }
 
 /**
@@ -34,7 +36,7 @@ export function canvasLayout({ viewport, dpr, output, renderScale }: CanvasLayou
   const [viewWidth, viewHeight] = viewport;
   const pixels = outputPixels(output);
   if (pixels === null) {
-    return { css: { left: 0, top: 0, width: viewWidth, height: viewHeight }, render: renderSize(viewWidth, viewHeight, dpr) };
+    return { css: { left: 0, top: 0, width: viewWidth, height: viewHeight }, render: renderSize(viewWidth, viewHeight, dpr), letterboxed: false };
   }
 
   const scale = Math.min(dpr, MAX_DEVICE_PIXEL_RATIO);
@@ -56,5 +58,5 @@ export function canvasLayout({ viewport, dpr, output, renderScale }: CanvasLayou
   const cssHeight = height / scale;
   const css = { left: (viewWidth - cssWidth) / 2, top: (viewHeight - cssHeight) / 2, width: cssWidth, height: cssHeight };
   const render = effectiveRenderScale(output, renderScale) === 'full' ? pixels : ([width, height] as const);
-  return { css, render };
+  return { css, render, letterboxed: true };
 }

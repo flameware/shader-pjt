@@ -105,6 +105,7 @@ describe('buildPassGraph', () => {
       ['a non-string title', { title: 3 }, 'title'],
       ['an unknown Output size', { output: '3:2' }, 'Output size'],
       ['an Output size that is not two positive integers', { output: [2160, 0] }, 'Output size'],
+      ['an Output size over 4096 a side', { output: [8192, 1024] }, '4096'],
       ['an unknown top-level key', { pass: {} }, "알 수 없는 키 'pass'"],
       ['passes that is not an object', { passes: [] }, 'passes'],
       ['options for a Pass with no .frag', { passes: { blurr: {} } }, "'blurr'"],

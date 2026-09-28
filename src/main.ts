@@ -12,7 +12,7 @@ import { createOutputSettings } from './output/settings';
 import { UNSUPPORTED_MESSAGE, hasFloatLinear, missingRequiredFeature } from './gl/features';
 import { parameterPassOrder } from './params/merge';
 import { createPassPipeline } from './params/pipeline';
-import { browserStorage, createParameterValues } from './params/values';
+import { browserStorage, createParameterValues, memoryStorage } from './params/values';
 import type { ShaderSource } from './shader-source';
 import { sketchConfigFile, sketchPassFiles } from './sketch/files';
 import { buildPassGraph } from './sketch/graph';
@@ -89,7 +89,8 @@ async function start(): Promise<void> {
 
   // Output size and render scale (#22), per Sketch in localStorage. Changing either changes the
   // composition, so the Sketch resets and its buffers are reallocated at the new size (ADR-0001).
-  const output = createOutputSettings(name, browserStorage(), built.graph?.output);
+  // Without a graph the sketch.ts default is unknown; don't let a choice made then overwrite the saved one.
+  const output = createOutputSettings(name, built.graph ? browserStorage() : memoryStorage(), built.graph?.output);
   output.subscribe(() => engine.reset());
   mountOutputFolder(panel.pane, output, () => [canvas.width, canvas.height]);
   mountOutputBadge(ui.hud.topLeft, output);
@@ -135,7 +136,7 @@ async function start(): Promise<void> {
       output: output.output(),
       renderScale: output.renderScale(),
     });
-    placeCanvas(canvas, layout.css, output.output() !== 'window');
+    placeCanvas(canvas, layout);
     const [width, height] = layout.render;
     // A paused Feedback Sketch isn't redrawn, so resizing would blank it; CSS stretches it
     // meanwhile. On play, the new size resamples the buffers, so the Feedback carries on.

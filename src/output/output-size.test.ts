@@ -10,8 +10,12 @@ describe('parseOutputSize', () => {
     expect(parseOutputSize([2000, 1000])).toEqual([2000, 1000]);
   });
 
+  it('accepts up to 4096 a side, like the presets, so no tiling is ever needed', () => {
+    expect(parseOutputSize([4096, 4096])).toEqual([4096, 4096]);
+  });
+
   it('rejects anything else', () => {
-    for (const value of ['3:2', '', 0, null, undefined, [0, 10], [1.5, 2], [100], [1, 2, 3], ['1', '2'], { w: 1 }]) {
+    for (const value of ['3:2', '', 0, null, undefined, [0, 10], [1.5, 2], [4097, 100], [100], [1, 2, 3], ['1', '2'], { w: 1 }]) {
       expect(parseOutputSize(value)).toBeUndefined();
     }
   });
