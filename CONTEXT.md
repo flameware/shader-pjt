@@ -8,6 +8,10 @@ A personal playground for writing GLSL shader sketches and viewing them live in 
 One self-contained shader artwork — the unit of work in this playground. It may span several passes, including ones that read the previous frame.
 _Avoid_: shader (for the whole piece), demo, experiment, piece
 
+**Template**:
+The starting contents a new sketch is created from. A new sketch starts either from a template or as a copy of an existing sketch; after that it has no link to where it came from.
+_Avoid_: boilerplate, starter, preset
+
 **Pass**:
 One rendering step of a sketch. Its output is handed to other passes, or to the next frame.
 _Avoid_: buffer (except for the stored output itself), tab
