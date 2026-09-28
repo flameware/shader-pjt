@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { bufferSize, createSlots } from './buffers';
+import type { BufferSize, PassGraph, PassNode } from '../sketch/graph';
+import { bufferSize, createSlots, graphBufferSizes } from './buffers';
 
 describe('bufferSize', () => {
   it('follows the canvas by scale, rounding and never going below 1×1', () => {
@@ -57,5 +58,32 @@ describe('createSlots', () => {
       slots.written();
     }
     expect(written).toEqual([1, 0, 1, 0]);
+  });
+});
+
+describe('graphBufferSizes', () => {
+  const node = (name: string, size: BufferSize): PassNode => ({
+    name,
+    file: `sketches/s/${name}.frag`,
+    channels: [],
+    buffer: { format: 'rgba16f', filter: 'linear', wrap: 'clamp', size },
+    feedback: false,
+  });
+  const graph: PassGraph = {
+    passes: {
+      blur: node('blur', { scale: 0.5 }),
+      lut: node('lut', { size: [256, 16] }),
+      unused: node('unused', { scale: 4 }),
+      main: node('main', { scale: 1 }),
+    },
+    order: ['blur', 'lut', 'main'],
+  };
+
+  it('recomputes scale against the size rendered at (the Output size, #24) and keeps a fixed size, for every Pass that runs', () => {
+    expect(graphBufferSizes(graph, 2160, 2700)).toEqual([
+      [1080, 1350],
+      [256, 16],
+      [2160, 2700],
+    ]);
   });
 });

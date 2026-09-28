@@ -23,7 +23,7 @@ import { mountBanner } from './ui/banner';
 import { mountParameterPanel } from './ui/parameter-panel';
 import { bannerView } from './ui/banner-view';
 import { mountBrowserUi } from './ui/browser-ui';
-import { mountScreenCapture } from './ui/capture';
+import { mountCapture } from './ui/capture';
 import { mountOutputBadge } from './ui/output-badge';
 import { mountOutputFolder } from './ui/output-folder';
 import { mountSketchPicker } from './ui/sketch-picker';
@@ -104,16 +104,24 @@ async function start(): Promise<void> {
   // composition, so the Sketch resets and its buffers are reallocated at the new size (ADR-0001).
   // Without a graph the sketch.ts default is unknown; don't let a choice made then overwrite the saved one.
   const output = createOutputSettings(name, built.graph ? browserStorage() : memoryStorage(), built.graph?.output);
-  output.subscribe(() => engine.reset());
+  // A failed Output size Capture's banner depends on the size, so a new choice clears it too.
+  output.subscribe(() => {
+    engine.reset();
+    diagnostics.report('capture', []);
+  });
   mountOutputFolder(panel.pane, output, () => [canvas.width, canvas.height]);
   mountOutputBadge(ui.hud.topLeft, output);
 
-  // Screen Capture (#23): `C` and the panel's Capture folder (after Output, as in #9); taken right after a frame is drawn.
-  const capture = mountScreenCapture(ui, panel.pane, {
+  // Capture (#23, #24): `C`, `Shift+C` and the panel's Capture folder (after Output, as in #9).
+  // Screen Capture is taken right after a frame is drawn; Output size Capture right before the
+  // next one, from the frame on screen.
+  const capture = mountCapture(ui, panel.pane, {
     sketch: name,
-    readMain: () => renderer.readMain(),
+    renderer,
     parameters: () => parameters.list(),
     output: () => ({ output: output.output(), renderScale: effectiveRenderScale(output.output(), output.renderScale()) }),
+    feedback: () => engine.hasFeedback(),
+    reportError: (message) => diagnostics.report('capture', message === null ? [] : [{ severity: 'error', message }]),
   });
 
   // Every Pass compiles, including ones that don't run, so their errors show too. Include and
@@ -165,6 +173,8 @@ async function start(): Promise<void> {
       canvas.width = width;
       canvas.height = height;
     }
+    // Before `engine.frame`, so an Output size Capture uses the frame on screen (#8 decision 6).
+    capture.beforeFrame();
     const tick = engine.frame(now, { width, height, mouse: mouse.value(), parameters: parameters.uniforms() });
     ui.frame(tick, now);
     capture.frame();
