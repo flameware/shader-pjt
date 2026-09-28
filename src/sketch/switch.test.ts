@@ -20,6 +20,8 @@ function fakePage(href: string) {
       removeItem: (key: string) => void store.delete(key),
     },
     setTimeout: (run: () => void) => void timers.push(run),
+    time: 0,
+    now: (): number => page.time,
     runTimers: () => timers.splice(0).forEach((run) => run()),
   } satisfies SwitchPage & Record<string, unknown>;
   return page;
@@ -64,10 +66,20 @@ describe('switching Sketches', () => {
     expect(page.reloads).toBe(1);
   });
 
-  it('carries a notice across the reload, shown once by the next open()', () => {
+  it('carries a notice across the reload to the next open()', () => {
     const page = fakePage('http://localhost/?sketch=2026-09-26');
     createSketchSwitch(page).go('2026-09-28', { notice: '새 Sketch: 2026-09-28' });
     expect(createSketchSwitch(page).open(names)).toEqual({ name: '2026-09-28', notice: '새 Sketch: 2026-09-28' });
+  });
+
+  it('keeps the notice through a second reload right after (a new Sketch can cause several), not later', () => {
+    const page = fakePage('http://localhost/?sketch=2026-09-26');
+    createSketchSwitch(page).go('2026-09-28', { notice: 'n' });
+    page.time = 500;
+    createSketchSwitch(page).open(names);
+    page.time = 1500;
+    expect(createSketchSwitch(page).open(names).notice).toBe('n');
+    page.time = 5000;
     expect(createSketchSwitch(page).open(names).notice).toBeNull();
   });
 

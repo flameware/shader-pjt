@@ -8,6 +8,8 @@ export interface SwitchPage {
   /** `sessionStorage`, or `null` where it is unavailable. */
   storage: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> | null;
   setTimeout(run: () => void, ms: number): void;
+  /** Milliseconds, comparable across reloads (`Date.now`). */
+  now(): number;
 }
 
 export interface OpenedSketch {
@@ -52,10 +54,15 @@ export function browserSwitchPage(): SwitchPage {
   } catch {
     // No storage: switching still works, only the arrival toast is lost.
   }
-  return { location, history, storage, setTimeout: (run, ms) => void window.setTimeout(run, ms) };
+  return { location, history, storage, setTimeout: (run, ms) => void window.setTimeout(run, ms), now: Date.now };
 }
 
 const NOTICE_KEY = 'shader-playground:sketch-notice';
+/**
+ * How long a carried notice stays showable. A new Sketch can cause more than one reload in a row
+ * (Vite reloads once per glob that changed), so the notice isn't consumed by the first page.
+ */
+const NOTICE_MS = 3000;
 const FALLBACK_RELOAD_MS = 1000;
 
 export function createSketchSwitch(page: SwitchPage): SketchSwitch {
@@ -63,17 +70,24 @@ export function createSketchSwitch(page: SwitchPage): SketchSwitch {
     const url = sketchUrl(page.location.href, name);
     if (url !== page.location.href) page.history.replaceState(null, '', url);
   };
-  const takeNotice = () => {
-    const notice = page.storage?.getItem(NOTICE_KEY) ?? null;
+  const readNotice = (): string | null => {
+    const stored = page.storage?.getItem(NOTICE_KEY) ?? null;
+    if (stored === null) return null;
+    try {
+      const { text, until } = JSON.parse(stored) as { text: string; until: number };
+      if (page.now() <= until) return text;
+    } catch {
+      // Unreadable: drop it.
+    }
     page.storage?.removeItem(NOTICE_KEY);
-    return notice;
+    return null;
   };
 
   return {
     open(names) {
       const requested = new URL(page.location.href).searchParams.get('sketch');
       const name = pickSketch(names, requested);
-      const carried = takeNotice();
+      const carried = readNotice();
       if (name === null) return { name, notice: carried };
       replaceUrl(name);
       const missing = requested !== null && requested !== name ? `없는 Sketch: ${requested} · 가장 최근 Sketch를 엽니다` : null;
@@ -83,7 +97,7 @@ export function createSketchSwitch(page: SwitchPage): SketchSwitch {
     go(name, { notice, reload = 'now' } = {}) {
       replaceUrl(name);
       try {
-        if (notice !== undefined) page.storage?.setItem(NOTICE_KEY, notice);
+        if (notice !== undefined) page.storage?.setItem(NOTICE_KEY, JSON.stringify({ text: notice, until: page.now() + NOTICE_MS }));
       } catch {
         // Storage full or blocked: switch anyway, without the arrival toast.
       }
