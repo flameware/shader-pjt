@@ -15,6 +15,8 @@ export interface FrameTime {
 export interface Clock {
   /** Advances to the frame drawn at `nowMs` (a `requestAnimationFrame` timestamp). */
   tick(nowMs: number): FrameTime;
+  /** The next `tick` is frame 0 at time 0 again (part of the engine's reset). */
+  reset(): void;
 }
 
 export function createClock(): Clock {
@@ -23,6 +25,12 @@ export function createClock(): Clock {
   let frame = -1;
 
   return {
+    reset() {
+      lastMs = null;
+      timeMs = 0;
+      frame = -1;
+    },
+
     tick(nowMs) {
       const deltaMs = lastMs === null ? 0 : nowMs - lastMs;
       lastMs = nowMs;

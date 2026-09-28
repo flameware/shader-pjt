@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { missingRequiredFeature } from './features';
+import { hasFloatLinear, missingRequiredFeature } from './features';
 
 const withExtensions = (...names: string[]) => ({
   getExtension: (name: string) => (names.includes(name) ? {} : null),
@@ -16,5 +16,12 @@ describe('missingRequiredFeature', () => {
 
   it('reports nothing when WebGL2 and EXT_color_buffer_float are both there', () => {
     expect(missingRequiredFeature(withExtensions('EXT_color_buffer_float'))).toBeNull();
+  });
+});
+
+describe('hasFloatLinear', () => {
+  it('is true only when OES_texture_float_linear is there', () => {
+    expect(hasFloatLinear(withExtensions('EXT_color_buffer_float', 'OES_texture_float_linear'))).toBe(true);
+    expect(hasFloatLinear(withExtensions('EXT_color_buffer_float'))).toBe(false);
   });
 });

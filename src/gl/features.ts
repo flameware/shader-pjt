@@ -12,3 +12,11 @@ export function missingRequiredFeature(
   if (gl.getExtension('EXT_color_buffer_float') === null) return 'EXT_color_buffer_float';
   return null;
 }
+
+/**
+ * Whether `rgba32f` buffers may use `linear` filtering (`OES_texture_float_linear`). Optional:
+ * without it they fall back to `nearest` with a warning (#10). Calling this enables it.
+ */
+export function hasFloatLinear(gl: { getExtension(name: string): unknown }): boolean {
+  return gl.getExtension('OES_texture_float_linear') !== null;
+}
