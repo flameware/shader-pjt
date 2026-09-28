@@ -25,7 +25,7 @@ A sketch reading its own previous frame as input, producing trails, flow, and ac
 _Avoid_: ping-pong (implementation term), history
 
 **Parameter**:
-A value exposed by a sketch that can be tuned live from a GUI while the sketch runs.
+A value exposed by a sketch that can be tuned live from a GUI while the sketch runs. It belongs to the sketch as a whole: every pass that names the same parameter sees the same value.
 _Avoid_: control, knob, setting
 
 **Capture**:
