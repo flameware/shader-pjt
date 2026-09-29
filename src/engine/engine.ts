@@ -34,6 +34,11 @@ export interface Engine {
   reset(): void;
   readonly playback: Playback;
   /**
+   * While a Recording runs, time advances by one video frame per drawn frame instead of the wall
+   * clock (ADR-0006); `false` returns to the wall clock without a jump.
+   */
+  setFixedStep(fixed: boolean): void;
+  /**
    * True while a paused Feedback Sketch holds its picture: the next `frame` draws nothing. The
    * caller should then leave the canvas alone (resizing it would clear the held picture).
    */
@@ -64,6 +69,7 @@ export function createEngine(renderer: Renderer, clock: Clock): Engine {
       clock.reset();
     },
     playback: clock,
+    setFixedStep: (fixed) => clock.setFixedStep(fixed),
     isFrozen: () => feedback && !clock.willAdvance(),
     hasFeedback: () => feedback,
     frame(nowMs, size) {

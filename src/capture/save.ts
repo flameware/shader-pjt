@@ -49,12 +49,15 @@ export const browserTransport: SaveTransport = {
     const json: unknown = await response.json().catch(() => null);
     return { status: response.status, json };
   },
-  download(bytes, fileName) {
-    const url = URL.createObjectURL(new Blob([bytes as Uint8Array<ArrayBuffer>], { type: 'image/png' }));
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = fileName;
-    link.click();
-    setTimeout(() => URL.revokeObjectURL(url), 10_000);
-  },
+  download: (bytes, fileName) => downloadFile(bytes, fileName, 'image/png'),
 };
+
+/** Downloads `bytes` as `fileName` through a temporary link. */
+export function downloadFile(bytes: Uint8Array, fileName: string, type: string): void {
+  const url = URL.createObjectURL(new Blob([bytes as Uint8Array<ArrayBuffer>], { type }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}

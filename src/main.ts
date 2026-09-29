@@ -21,6 +21,7 @@ import { sketchNames } from './sketch/pick';
 import { browserSwitchPage, createSketchSwitch } from './sketch/switch';
 import { mountBanner } from './ui/banner';
 import { mountParameterPanel } from './ui/parameter-panel';
+import { mountRecording } from './ui/recording';
 import { bannerView } from './ui/banner-view';
 import { mountBrowserUi } from './ui/browser-ui';
 import { mountCapture } from './ui/capture';
@@ -124,6 +125,10 @@ async function start(): Promise<void> {
     reportError: (message) => diagnostics.report('capture', message === null ? [] : [{ severity: 'error', message }]),
   });
 
+  // Recording (#43): `V` starts and ends it. The clock takes fixed steps meanwhile (ADR-0006) and
+  // each frame whose time advanced is encoded right after it is drawn.
+  const recording = mountRecording(ui, { sketch: name, canvas, engine });
+
   // Every Pass compiles, including ones that don't run, so their errors show too. Include and
   // Parameter errors block a Pass's new version like a compile failure does.
   const pipeline = createPassPipeline({
@@ -159,6 +164,11 @@ async function start(): Promise<void> {
   canvas.addEventListener('pointercancel', (e) => e.isPrimary && mouse.release());
 
   const frame = (now: number) => {
+    // The encoder is behind: this animation frame draws nothing and time waits (#42 decision 9).
+    if (!recording.ready()) {
+      requestAnimationFrame(frame);
+      return;
+    }
     const layout = canvasLayout({
       viewport: [innerWidth, innerHeight],
       dpr: devicePixelRatio,
@@ -178,6 +188,7 @@ async function start(): Promise<void> {
     const tick = engine.frame(now, { width, height, mouse: mouse.value(), parameters: parameters.uniforms() });
     ui.frame(tick, now);
     capture.frame();
+    recording.frame(tick);
     mouse.endFrame();
     requestAnimationFrame(frame);
   };
