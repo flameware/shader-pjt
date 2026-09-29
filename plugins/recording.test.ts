@@ -62,6 +62,12 @@ describe('storeRecording', () => {
     expect(readJson(`${BASE}-2.json`).sketch).toBe(SKETCH);
   });
 
+  it('writes only the sidecar fields it checked: its own git and duration, nothing extra from the browser', async () => {
+    const body = encodeRecordingRequest({ ...meta(SKETCH), duration: 99, git: { commit: 'fake', dirty: false }, extra: 1 } as never, mp4);
+    await storeRecording(body, { root, git: async () => undefined });
+    expect(readJson(`${BASE}.json`)).toEqual(meta(SKETCH));
+  });
+
   it('leaves git out when it is unavailable', async () => {
     await storeRecording(request(SKETCH), { root, git: async () => undefined });
     expect(readJson(`${BASE}.json`).git).toBeUndefined();

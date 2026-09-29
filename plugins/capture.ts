@@ -102,15 +102,28 @@ class BodyTooLarge extends Error {
   }
 }
 
+/**
+ * The request body, up to `maxBytes`. A bigger one is read to the end but thrown away before
+ * `BodyTooLarge` is thrown, so the connection stays usable for the 413 reply (the browser then
+ * downloads instead). With a `Content-Length`, the body is copied straight into one buffer rather
+ * than collected and concatenated, so a large Recording isn't held twice.
+ */
 async function readBody(req: IncomingMessage, maxBytes: number): Promise<Uint8Array> {
+  const declared = Number(req.headers['content-length']);
+  const known = Number.isInteger(declared) && declared >= 0 && declared <= maxBytes;
+  const buffer = known ? new Uint8Array(declared) : null;
   const parts: Buffer[] = [];
   let size = 0;
   for await (const part of req as AsyncIterable<Buffer>) {
+    const offset = size;
     size += part.length;
-    if (size > maxBytes) throw new BodyTooLarge();
-    parts.push(part);
+    if (size > maxBytes || (buffer && size > buffer.length)) continue; // drain
+    if (buffer) buffer.set(part, offset);
+    else parts.push(part);
   }
-  return new Uint8Array(Buffer.concat(parts));
+  if (size > maxBytes) throw new BodyTooLarge();
+  if (buffer && size !== buffer.length) throw new Error('요청 본문 길이가 Content-Length와 다릅니다.');
+  return buffer ?? new Uint8Array(Buffer.concat(parts));
 }
 
 /**

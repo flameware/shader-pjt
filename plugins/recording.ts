@@ -9,11 +9,12 @@ import { CAPTURES_DIR, type StoreOptions, type StoreResult, serveSaveEndpoint, s
 /** The longest Recording: the safety cap that ends one automatically (#42 decision 2). */
 const MAX_RECORDING_SECONDS = 60;
 /**
- * The largest `POST /__recording` body: the longest Recording of a 4K UHD window at its target
- * bitrate (about 57 Mbps, so about 430 MB), plus half again for an encoder overshooting on noisy
- * frames. A bigger body gets a 413, and the browser downloads the mp4 instead.
+ * The largest `POST /__recording` body: the longest Recording of a 5K (5120×2880, a HiDPI
+ * `window`) frame at its target bitrate (about 100 Mbps, so about 760 MB), plus half again for an
+ * encoder overshooting on noisy frames. A bigger body gets a 413, and the browser downloads the
+ * mp4 instead.
  */
-const MAX_BODY_BYTES = Math.ceil(((MAX_RECORDING_SECONDS * videoBitrate([3840, 2160])) / 8) * 1.5);
+const MAX_BODY_BYTES = Math.ceil(((MAX_RECORDING_SECONDS * videoBitrate([5120, 2880])) / 8) * 1.5);
 
 /**
  * Saves one `POST /__recording` body as `captures/<sketch>/<sketch>_<time>_<W>x<H>.mp4` with a
