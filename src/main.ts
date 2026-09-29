@@ -14,6 +14,7 @@ import { UNSUPPORTED_MESSAGE, hasFloatLinear, missingRequiredFeature } from './g
 import { parameterPassOrder } from './params/merge';
 import { createPassPipeline } from './params/pipeline';
 import { browserStorage, createParameterValues, memoryStorage } from './params/values';
+import { createRecordingSettings } from './recording/settings';
 import type { ShaderSource } from './shader-source';
 import { sketchConfigFile, sketchPassFiles } from './sketch/files';
 import { buildPassGraph } from './sketch/graph';
@@ -125,9 +126,16 @@ async function start(): Promise<void> {
     reportError: (message) => diagnostics.report('capture', message === null ? [] : [{ severity: 'error', message }]),
   });
 
-  // Recording (#43): `V` starts and ends it. The clock takes fixed steps meanwhile (ADR-0006) and
-  // each frame whose time advanced is encoded right after it is drawn.
-  const recording = mountRecording(ui, { sketch: name, canvas, engine });
+  // Recording (#43, #45): `V` or the panel's Recording folder (after Capture) starts and ends it.
+  // The clock takes fixed steps meanwhile (ADR-0006) and each frame whose time advanced is encoded
+  // right after it is drawn. The max length is kept per Sketch in localStorage.
+  const recording = mountRecording(ui, {
+    sketch: name,
+    canvas,
+    engine,
+    pane: panel.pane,
+    settings: createRecordingSettings(name, browserStorage()),
+  });
 
   // Every Pass compiles, including ones that don't run, so their errors show too. Include and
   // Parameter errors block a Pass's new version like a compile failure does.

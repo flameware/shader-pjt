@@ -1,0 +1,51 @@
+/*
+ * Recording indicator (#42 decision 13): just above the play bar, outside the HUD so it isn't
+ * hidden with it. With the HUD faded out or off only the red dot stays.
+ */
+.recording-indicator {
+  position: fixed;
+  bottom: 58px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font: 12px ui-monospace, Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+  color: #ddd;
+  white-space: nowrap;
+  pointer-events: none;
+  transition:
+    background-color 0.4s,
+    border-color 0.4s;
+}
+.recording-indicator[hidden] {
+  display: none;
+}
+.recording-indicator-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #ff3b30;
+  box-shadow: 0 0 6px rgba(255, 59, 48, 0.8);
+  animation: recording-blink 1.2s ease-in-out infinite;
+}
+@keyframes recording-blink {
+  50% {
+    opacity: 0.35;
+  }
+}
+.recording-indicator-text {
+  transition: opacity 0.4s;
+}
+.recording-indicator:not([data-hud='shown']) {
+  background: transparent;
+  border-color: transparent;
+  backdrop-filter: none;
+}
+.recording-indicator:not([data-hud='shown']) .recording-indicator-text {
+  opacity: 0;
+}

@@ -4,7 +4,12 @@ import type { ClockTick } from '../engine/clock';
 import type { Engine } from '../engine/engine';
 import { type VideoRecorder, startVideoRecorder } from '../recording/encoder';
 import { videoSize } from '../recording/encoding';
+import { SAFETY_LIMIT_S, recordingEnd } from '../recording/length';
+import type { RecordingSettings } from '../recording/settings';
+import type { Pane } from 'tweakpane';
 import type { BrowserUi } from './browser-ui';
+import { type RecordingFolder, mountRecordingFolder } from './recording-folder';
+import { mountRecordingIndicator } from './recording-indicator';
 
 const TOAST_MS = 6000;
 
@@ -14,6 +19,10 @@ export interface RecordingOptions {
   sketch: string;
   canvas: HTMLCanvasElement;
   engine: Pick<Engine, 'setFixedStep'>;
+  /** The panel the Recording folder joins, after Capture. */
+  pane: Pane;
+  /** The Sketch's max length (#45). */
+  settings: RecordingSettings;
 }
 
 export interface Recording {
@@ -24,6 +33,8 @@ export interface Recording {
   ready(): boolean;
   /** Call every animation frame right after `engine.frame`; encodes the frame if time advanced. */
   frame(tick: ClockTick): void;
+  /** The panel's Recording folder; its `toggle` button can be disabled with a reason, as Capture's is. */
+  folder: RecordingFolder;
 }
 
 type State =
@@ -36,6 +47,10 @@ type State =
  * Recording (#43): `V` starts it and `V` again ends it and downloads the mp4. While it runs the
  * clock takes fixed 1/60 s steps (ADR-0006) and every frame whose time advanced becomes one video
  * frame, so a paused stretch is left out and a `.` step adds one frame.
+ *
+ * #45: the panel's Recording folder does the same as `V` and picks the max length; the Recording
+ * ends on the exact frame that reaches it, or at the 60 s safety limit without one. A red dot
+ * with the video time and frame count shows while it runs.
  */
 export function mountRecording(ui: BrowserUi, options: RecordingOptions): Recording {
   const { canvas, engine } = options;
@@ -66,7 +81,6 @@ export function mountRecording(ui: BrowserUi, options: RecordingOptions): Record
     recorder = result.recorder;
     state = { kind: 'recording', recorder, startedAt: localTimestamp(new Date()) };
     engine.setFixedStep(true);
-    ui.toasts.show('● Recording 시작 (V로 끝)');
   };
 
   const stop = async () => {
@@ -89,26 +103,43 @@ export function mountRecording(ui: BrowserUi, options: RecordingOptions): Record
     }
   };
 
-  ui.keymap.add({
-    keys: ['V'],
-    description: 'Recording 시작 / 끝',
-    run() {
-      if (state.kind === 'idle') void start();
-      else if (state.kind === 'starting') state.cancelled = true;
-      else void stop();
-    },
-  });
+  const toggle = () => {
+    if (state.kind === 'idle') void start();
+    else if (state.kind === 'starting') state.cancelled = true;
+    else void stop();
+  };
+  ui.keymap.add({ keys: ['V'], description: 'Recording 시작 / 끝', run: toggle });
+  const folder = mountRecordingFolder(options.pane, options.settings, toggle);
+  const indicator = mountRecordingIndicator(document.body);
+
+  /** Adds the frame on screen, then ends the Recording right there once it is long enough (#45). */
+  const record = (recorder: VideoRecorder) => {
+    recorder.addFrame(canvas);
+    const end = recordingEnd(recorder.frames(), options.settings.maxLength());
+    if (end === null) return;
+    if (end === 'safety') ui.toasts.show(`안전 상한 ${SAFETY_LIMIT_S}초에 도달해 Recording을 끝냈습니다`, { durationMs: TOAST_MS });
+    void stop();
+  };
+
+  const render = () => {
+    folder.render(state.kind);
+    indicator.render(state.kind === 'recording' ? state.recorder.frames() : null, ui.hud.state());
+  };
 
   return {
+    folder,
+
     ready: () => state.kind !== 'recording' || !state.recorder.busy(),
 
     frame(tick) {
-      if (state.kind !== 'recording' || !tick.advanced) return;
-      const { recorder } = state;
-      const [width, height] = videoSize([canvas.width, canvas.height]);
-      // A new frame size can't go into the same video: end it with what was recorded so far.
-      if (width !== recorder.size[0] || height !== recorder.size[1]) return void stop();
-      recorder.addFrame(canvas);
+      if (state.kind === 'recording' && tick.advanced) {
+        const { recorder } = state;
+        const [width, height] = videoSize([canvas.width, canvas.height]);
+        // A new frame size can't go into the same video: end it with what was recorded so far.
+        if (width !== recorder.size[0] || height !== recorder.size[1]) void stop();
+        else record(recorder);
+      }
+      render();
     },
   };
 }
