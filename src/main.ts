@@ -84,17 +84,12 @@ async function start(): Promise<void> {
   // add keys with `ui.keymap.add` and notify with `ui.toasts.show`.
   const ui = mountBrowserUi(document.body, engine);
   // Sketch name, palette, `[`/`]` and the switch to a new Sketch folder (#20). A switch first ends
-  // a running Recording and waits until it is saved under this Sketch (#46); where it went is
-  // shown on arrival, since this page's toast goes with the reload.
+  // a running Recording and reloads once it is saved under this Sketch (#46); where it went is
+  // shown on arrival, since this page's toasts go with the reload.
   let recording: Recording | undefined;
   const switchAfterRecording: SketchSwitch = {
-    open: (list) => sketchSwitch.open(list),
-    go(next, options = {}) {
-      void (recording?.stop('sketch') ?? Promise.resolve(null)).then((saved) => {
-        const notice = [options.notice, saved].filter((text) => text != null).join(' · ');
-        sketchSwitch.go(next, { ...options, ...(notice ? { notice } : {}) });
-      });
-    },
+    ...sketchSwitch,
+    go: (next, options) => sketchSwitch.go(next, { ...options, ...(recording ? { waitFor: recording.stop('sketch') } : {}) }),
   };
   const picker = mountSketchPicker(document.body, ui, { names, current: name, sketchSwitch: switchAfterRecording });
   if (notice !== null) ui.toasts.show(notice);

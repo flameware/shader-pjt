@@ -5,6 +5,9 @@ import { type OutputSize, type RenderScale, effectiveRenderScale, sameOutput } f
  * keeps one frame size, and a Recording saves exactly what the engine renders.
  */
 
+/** An Output size and render scale, as `OutputSettings` holds them. */
+type OutputChoice = { output: OutputSize; renderScale: RenderScale };
+
 /** Whether `V` can start a Recording now, and if not, the reason for the tooltip and the toast. */
 export type RecordingAvailability = { ok: true } | { ok: false; reason: string };
 
@@ -13,7 +16,7 @@ export type RecordingAvailability = { ok: true } | { ok: false; reason: string }
  * Output size Capture: at `fit` the engine renders the screen's pixels, not the Output size.
  * `window` always records its render size.
  */
-export function recordingAvailability(input: { output: OutputSize; renderScale: RenderScale }): RecordingAvailability {
+export function recordingAvailability(input: OutputChoice): RecordingAvailability {
   if (input.output === 'window' || effectiveRenderScale(input.output, input.renderScale) === 'full') return { ok: true };
   return { ok: false, reason: 'Output size로 녹화하려면 render scale을 full로 바꾸세요' };
 }
@@ -35,13 +38,13 @@ const STOP_TEXT: Record<RecordingStop, string> = {
 /** The toast that says why a Recording ended early. */
 export const recordingStopText = (stop: RecordingStop) => STOP_TEXT[stop];
 
-type OutputChoice = { output: OutputSize; renderScale: RenderScale };
-
-/** Whether moving from the Output size and render scale a Recording started at to `now` ends it. */
+/**
+ * Whether moving from the Output size and (effective) render scale a Recording started at to
+ * `now` ends it.
+ */
 export function outputStop(started: OutputChoice, now: OutputChoice): 'output-size' | 'render-scale' | null {
   if (!sameOutput(started.output, now.output)) return 'output-size';
-  if (effectiveRenderScale(started.output, started.renderScale) !== effectiveRenderScale(now.output, now.renderScale)) return 'render-scale';
-  return null;
+  return started.renderScale === now.renderScale ? null : 'render-scale';
 }
 
 /**

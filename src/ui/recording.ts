@@ -82,6 +82,8 @@ type State =
 export function mountRecording(ui: BrowserUi, options: RecordingOptions): Recording {
   const { canvas, engine, output } = options;
   let state: State = { kind: 'idle' };
+  /** A Sketch switch is under way: no new Recording starts on a page about to reload. */
+  let leaving = false;
   /** Saves under way; the page shouldn't be left before they finish. */
   const saving = new Set<Promise<string | null>>();
   const availability = () => recordingAvailability({ output: output.output(), renderScale: output.renderScale() });
@@ -138,6 +140,7 @@ export function mountRecording(ui: BrowserUi, options: RecordingOptions): Record
 
   /** Ends a running Recording, first telling why when `reason` says it ended early. */
   const stop = (reason?: RecordingStop): Promise<string | null> => {
+    if (reason === 'sketch') leaving = true;
     if (state.kind === 'starting') {
       state.cancelled = true;
       return Promise.resolve(null);
@@ -154,13 +157,12 @@ export function mountRecording(ui: BrowserUi, options: RecordingOptions): Record
   };
 
   const toggle = () => {
-    if (state.kind === 'idle') {
-      const current = availability();
-      // The button is disabled then; `V` gives the same reason as its tooltip.
-      if (!current.ok) return ui.toasts.show(current.reason);
-      void start();
-    } else if (state.kind === 'starting') state.cancelled = true;
-    else void stop();
+    if (state.kind !== 'idle') return void stop();
+    if (leaving) return;
+    const current = availability();
+    // The button is disabled then; `V` gives the same reason as its tooltip.
+    if (!current.ok) return ui.toasts.show(current.reason);
+    void start();
   };
   ui.keymap.add({ keys: ['V'], description: 'Recording 시작 / 끝', run: toggle });
   const folder = mountRecordingFolder(options.pane, options.settings, toggle);
@@ -169,7 +171,7 @@ export function mountRecording(ui: BrowserUi, options: RecordingOptions): Record
   // Any Output size or render scale change resizes the frame: end the Recording (or a start that
   // would come up at the old size) before the next frame is drawn at the new one.
   output.subscribe(() => {
-    if (state.kind === 'starting') state.cancelled = true;
+    if (state.kind === 'starting') return void stop();
     if (state.kind !== 'recording') return;
     const reason = outputStop(state.described, { output: output.output(), renderScale: output.renderScale() });
     if (reason !== null) void stop(reason);
@@ -205,7 +207,8 @@ export function mountRecording(ui: BrowserUi, options: RecordingOptions): Record
     frame(tick) {
       if (state.kind === 'recording') {
         // A new render size (the window, in `window`) can't go into the same video: end it with
-        // what was recorded so far. Checked even while paused, so the reason shows right away.
+        // what was recorded so far. Checked even while paused (a frozen Feedback Sketch's canvas
+        // only resizes on play, so it ends then).
         const reason = renderSizeStop(state.renderSize, [canvas.width, canvas.height]);
         if (reason !== null) void stop(reason);
         else if (tick.advanced) record(state.recorder);

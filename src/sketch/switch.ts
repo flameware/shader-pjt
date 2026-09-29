@@ -27,6 +27,12 @@ export interface GoOptions {
    * full reload after a new Sketch folder) and reloads itself only if none comes within a second.
    */
   reload?: 'now' | 'fallback';
+  /**
+   * Work that must finish before this page reloads, such as saving a running Recording (#46). The
+   * URL is rewritten first, so a reload that comes sooner still opens `name`; what it resolves to
+   * is added to the notice.
+   */
+  waitFor?: Promise<string | null>;
 }
 
 /**
@@ -94,15 +100,20 @@ export function createSketchSwitch(page: SwitchPage): SketchSwitch {
       return { name, notice: carried ?? missing };
     },
 
-    go(name, { notice, reload = 'now' } = {}) {
+    go(name, { notice, reload = 'now', waitFor } = {}) {
       replaceUrl(name);
-      try {
-        if (notice !== undefined) page.storage?.setItem(NOTICE_KEY, JSON.stringify({ text: notice, until: page.now() + NOTICE_MS }));
-      } catch {
-        // Storage full or blocked: switch anyway, without the arrival toast.
-      }
-      if (reload === 'now') page.location.reload();
-      else page.setTimeout(() => page.location.reload(), FALLBACK_RELOAD_MS);
+      const leave = (extra: string | null = null) => {
+        const text = [notice, extra].filter((part) => part != null).join(' · ');
+        try {
+          if (text !== '') page.storage?.setItem(NOTICE_KEY, JSON.stringify({ text, until: page.now() + NOTICE_MS }));
+        } catch {
+          // Storage full or blocked: switch anyway, without the arrival toast.
+        }
+        if (reload === 'now') page.location.reload();
+        else page.setTimeout(() => page.location.reload(), FALLBACK_RELOAD_MS);
+      };
+      if (waitFor === undefined) leave();
+      else void waitFor.then(leave, () => leave());
     },
   };
 }
