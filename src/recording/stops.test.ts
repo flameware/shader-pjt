@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { outputStop, recordingAvailability, renderSizeStop } from './stops';
+import { outputStop, playsOnStart, recordingAvailability, renderSizeStop } from './stops';
 
 describe('whether a Recording can start', () => {
   it('a preset Output size at fit is blocked, with the way out', () => {
@@ -20,6 +20,20 @@ describe('whether a Recording can start', () => {
 
   it('window always records', () => {
     expect(recordingAvailability({ output: 'window', renderScale: 'fit' })).toEqual({ ok: true });
+  });
+});
+
+describe('whether starting a Recording starts playback', () => {
+  it('paused on frame 0 (reset while paused) plays', () => {
+    expect(playsOnStart(true, 0)).toBe(true);
+  });
+
+  it('paused past frame 0 stays paused, for `.` steps', () => {
+    expect(playsOnStart(true, 120)).toBe(false);
+  });
+
+  it('already playing changes nothing', () => {
+    expect(playsOnStart(false, 0)).toBe(false);
   });
 });
 
