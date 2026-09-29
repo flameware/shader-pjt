@@ -40,6 +40,10 @@ _Avoid_: utils, helpers, common (the usual name of a sketch's own shared file)
 Saving the current frame of a sketch as an image — either exactly as shown on screen, or the same moment re-rendered at the sketch's Output size.
 _Avoid_: screenshot, export
 
+**Recording**:
+Saving a stretch of a sketch's frames as a video, started and stopped by the user or ended after a chosen length. Its time runs in even steps of one video frame, not with the wall clock, so the video stays smooth even when the sketch renders slowly.
+_Avoid_: video capture, export, clip
+
 **Output size**:
 The shape and pixel dimensions a sketch is composed for and captured at — either the browser window, or a preset such as 4:5 at 2160×2700. The on-screen view keeps its aspect ratio.
 _Avoid_: resolution (ambiguous with `iResolution`), format (a buffer option), frame (a time step)
