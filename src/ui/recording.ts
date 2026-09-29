@@ -8,6 +8,8 @@ import type { BrowserUi } from './browser-ui';
 
 const TOAST_MS = 6000;
 
+const messageOf = (error: unknown) => (error instanceof Error ? error.message : String(error));
+
 export interface RecordingOptions {
   sketch: string;
   canvas: HTMLCanvasElement;
@@ -53,7 +55,7 @@ export function mountRecording(ui: BrowserUi, options: RecordingOptions): Record
       ui.toasts.show(`Recording 실패: ${error.message}`, { durationMs: TOAST_MS });
     };
     const result = await startVideoRecorder([canvas.width, canvas.height], onError).catch(
-      (error: unknown) => ({ ok: false, reason: `Recording을 시작하지 못했습니다: ${error instanceof Error ? error.message : String(error)}` }) as const,
+      (error: unknown) => ({ ok: false, reason: `Recording을 시작하지 못했습니다: ${messageOf(error)}` }) as const,
     );
     if (starting.cancelled || !result.ok) {
       state = { kind: 'idle' };
@@ -83,7 +85,7 @@ export function mountRecording(ui: BrowserUi, options: RecordingOptions): Record
       ui.toasts.show(`Recording 저장 (다운로드): ${fileName}`, { durationMs: TOAST_MS });
     } catch (error) {
       console.error('[recording] saving failed', error);
-      ui.toasts.show(`Recording 저장 실패: ${error instanceof Error ? error.message : String(error)}`, { durationMs: TOAST_MS });
+      ui.toasts.show(`Recording 저장 실패: ${messageOf(error)}`, { durationMs: TOAST_MS });
     }
   };
 

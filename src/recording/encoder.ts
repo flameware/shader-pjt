@@ -103,11 +103,18 @@ export async function startVideoRecorder(renderSize: readonly [number, number], 
         }
       },
       async finish() {
-        await encoder.flush();
-        close();
-        await writing;
-        if (failed) throw new Error('인코딩 중 오류가 났습니다');
-        await output.finalize();
+        try {
+          await encoder.flush();
+          close();
+          await writing;
+          if (failed) throw new Error('인코딩 중 오류가 났습니다');
+          await output.finalize();
+        } catch (error) {
+          close();
+          void output.cancel();
+          throw error;
+        }
+        // `finalize` has resolved, so the buffer is there.
         return new Uint8Array(target.buffer!);
       },
       cancel() {
