@@ -37,6 +37,10 @@ describe('captureFileName', () => {
     );
     expect(captureFileName('흐름', '2026-01-02T03:04:05-02:30', [800, 600])).toBe('흐름_20260102-030405_800x600.png');
   });
+
+  it('takes another extension for a Recording', () => {
+    expect(captureFileName('flow', '2026-09-28T21:30:45+09:00', [2160, 2700], 'mp4')).toBe('flow_20260928-213045_2160x2700.mp4');
+  });
 });
 
 describe('numberedFileName', () => {

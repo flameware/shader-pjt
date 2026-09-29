@@ -21,12 +21,20 @@ export function isLocalTimestamp(text: string): boolean {
   return LOCAL_TIMESTAMP.test(text);
 }
 
-/** The file name for a Capture of `sketch` taken at `capturedAt` (a `localTimestamp`). */
-export function captureFileName(sketch: string, capturedAt: string, [width, height]: readonly [number, number]): string {
+/**
+ * The file name for a Capture of `sketch` taken at `capturedAt` (a `localTimestamp`); a
+ * Recording follows the same rule with `extension` `mp4` (#42 decision 11).
+ */
+export function captureFileName(
+  sketch: string,
+  capturedAt: string,
+  [width, height]: readonly [number, number],
+  extension = 'png',
+): string {
   const match = LOCAL_TIMESTAMP.exec(capturedAt);
   if (!match) throw new Error(`capturedAt 형식이 아닙니다: ${capturedAt}`);
   const [, y, mo, d, h, mi, s] = match;
-  return `${sketch}_${y}${mo}${d}-${h}${mi}${s}_${width}x${height}.png`;
+  return `${sketch}_${y}${mo}${d}-${h}${mi}${s}_${width}x${height}.${extension}`;
 }
 
 /** The `n`th candidate for a file name: itself first, then `-2`, `-3` … before `.png`. */
