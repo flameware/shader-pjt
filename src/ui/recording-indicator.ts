@@ -1,6 +1,6 @@
 import type { HudState } from './hud-visibility';
 import './recording.css';
-import { recordingHudView } from './recording-hud-view';
+import { recordingIndicatorView } from './recording-indicator-view';
 
 /** The on-screen Recording indicator; `render` is called every animation frame. */
 export interface RecordingIndicator {
@@ -30,7 +30,7 @@ export function mountRecordingIndicator(parent: HTMLElement): RecordingIndicator
       root.hidden = frames === null;
       if (frames === null) return;
       if (root.dataset.hud !== hud) root.dataset.hud = hud;
-      const view = recordingHudView(frames);
+      const view = recordingIndicatorView(frames);
       const next = `REC ${view.time} · ${view.frames}`;
       if (text.textContent !== next) text.textContent = next;
     },

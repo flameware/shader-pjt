@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { recordingEnd } from './length';
+import { maxLengthLabel, recordingEnd } from './length';
 
 describe('recording length', () => {
   it('a 10 s max length ends the Recording at exactly 600 frames', () => {
@@ -14,6 +14,11 @@ describe('recording length', () => {
 
   it('a max length lowered below what is already recorded ends it on the next frame', () => {
     expect(recordingEnd(400, 5)).toBe('max');
+  });
+
+  it('names "없음" with the safety limit it still has', () => {
+    expect(maxLengthLabel(null)).toBe('없음 (60초 상한)');
+    expect(maxLengthLabel(15)).toBe('15초');
   });
 
   it('nothing recorded yet never ends it', () => {

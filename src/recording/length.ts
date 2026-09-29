@@ -14,6 +14,9 @@ export const isMaxLength = (value: unknown): value is MaxLength => MAX_LENGTHS.s
 /** Even without a max length, a Recording ends at 60 s so memory can't run away. */
 export const SAFETY_LIMIT_S = 60;
 
+/** How the panel names a max length: `5초`, or `없음 (60초 상한)`. */
+export const maxLengthLabel = (length: MaxLength) => (length === null ? `없음 (${SAFETY_LIMIT_S}초 상한)` : `${length}초`);
+
 /**
  * Whether a Recording that has encoded `frames` frames ends now: `'max'` at the max length,
  * `'safety'` at the 60 s safety limit, else `null`. Checked right after each frame is added, so

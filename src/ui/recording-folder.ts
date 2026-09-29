@@ -1,5 +1,5 @@
 import type { ButtonApi, Pane } from 'tweakpane';
-import { MAX_LENGTHS, type MaxLength } from '../recording/length';
+import { MAX_LENGTHS, type MaxLength, maxLengthLabel } from '../recording/length';
 import type { RecordingSettings } from '../recording/settings';
 
 /** Where a Recording is, as far as the panel cares. */
@@ -41,7 +41,7 @@ export function mountRecordingFolder(pane: Pane, settings: RecordingSettings, to
   };
   folder.addBinding(state, 'maxLength', {
     label: '최대 길이',
-    options: Object.fromEntries(MAX_LENGTHS.map((m) => [m === null ? '없음 (60초 상한)' : `${m}초`, lengthKey(m)])),
+    options: Object.fromEntries(MAX_LENGTHS.map((m) => [maxLengthLabel(m), lengthKey(m)])),
   });
   settings.subscribe(() => pane.refresh());
 

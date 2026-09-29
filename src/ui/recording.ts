@@ -1,3 +1,4 @@
+import type { Pane } from 'tweakpane';
 import { captureFileName, localTimestamp } from '../capture/file-name';
 import { downloadFile } from '../capture/save';
 import type { ClockTick } from '../engine/clock';
@@ -6,7 +7,6 @@ import { type VideoRecorder, startVideoRecorder } from '../recording/encoder';
 import { videoSize } from '../recording/encoding';
 import { SAFETY_LIMIT_S, recordingEnd } from '../recording/length';
 import type { RecordingSettings } from '../recording/settings';
-import type { Pane } from 'tweakpane';
 import type { BrowserUi } from './browser-ui';
 import { type RecordingFolder, mountRecordingFolder } from './recording-folder';
 import { mountRecordingIndicator } from './recording-indicator';
