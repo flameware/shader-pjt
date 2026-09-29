@@ -128,6 +128,7 @@ HUD는 마우스나 키 입력이 2.5초 동안 없으면 사라지고, 입력�
 | `[` / `]` | 이전 / 다음 Sketch (이름순) |
 | `C` | 화면 Capture |
 | `Shift+C` | Output size Capture |
+| `V` | Recording 시작 / 끝 |
 | `H` | HUD 끄기 / 켜기 |
 | `?` | 단축키 표 |
 
@@ -143,8 +144,23 @@ Capture는 PNG로 `captures/<sketch>/<sketch>_<YYYYMMDD-HHmmss>_<W>x<H>.png`에 
 - **화면 Capture** (`C`): 지금 보이는 프레임을 그대로 저장합니다.
 - **Output size Capture** (`Shift+C`): 같은 순간을 Output size로 저장합니다. Feedback 없는 Sketch는 Output size로 다시 그려서 저장합니다. Feedback Sketch는 다시 시뮬레이션할 수 없으므로 `full`일 때만 지금 프레임을 저장합니다([ADR-0001](docs/adr/0001-feedback-capture-pins-working-resolution.md)).
 
+## Recording
+
+`V`(또는 패널의 **Recording** 폴더 버튼)로 지금 보이는 Sketch를 H.264 mp4(60fps)로 녹화하고, 다시 `V`를 누르면 끝내고 저장합니다. 누른 순간부터 녹화하며 리셋하지 않습니다. 처음부터 담으려면 먼저 `R`을 누릅니다.
+
+- **최대 길이**: 패널의 **최대 길이**에서 없음 / 5 / 10 / 15 / 30초를 고릅니다. Sketch별로 브라우저에 저장됩니다. 최대 길이가 없어도 60초 안전 상한에서 끝납니다. 길이는 영상 기준이라 일시정지한 구간은 세지 않습니다.
+- **크기**: 엔진이 렌더링하는 그대로 녹화합니다. `window`이면 창의 render size, 그 밖의 Output size는 render scale이 `full`일 때만 녹화할 수 있습니다. `fit`이면 녹화 버튼이 막히고 `full`로 바꾸라고 안내합니다.
+- **화면이 느려져도 영상은 매끄럽습니다**: 녹화 중에는 실제로 흐른 시간과 관계없이 frame마다 `iTime`이 정확히 1/60초(× 속도)씩 진행하고, 렌더링한 frame 하나가 영상 frame 하나가 됩니다. 큰 Output size에서 화면이 느리게 움직여도 영상은 60fps로 매끄럽습니다([ADR-0006](docs/adr/0006-recording-advances-time-by-fixed-frame-steps.md)). 마우스와 Parameter 조작은 실시간으로 반영됩니다.
+- **녹화 중 조작**: 일시정지한 구간은 영상에 들어가지 않고, `.`은 한 frame을 녹화합니다. 속도는 `iTime` 진행량만 바꿉니다. 리셋과 셰이더 hot reload는 녹화를 이어 갑니다.
+- **자동 종료**: frame 크기가 바뀌는 사건(Sketch 전환, Output size나 render scale 변경, `window`에서 창 크기 변경)이 일어나면 녹화를 끝내고 그때까지의 분량을 저장합니다. 녹화 중이거나 저장 중에 페이지를 떠나려 하면 브라우저가 확인을 묻습니다.
+- **HUD**: 녹화 중에는 빨간 점, 영상 기준 경과 시간, frame 수를 보여 줍니다. HUD는 영상에 들어가지 않습니다.
+- **요구 사항**: WebCodecs `VideoEncoder`가 H.264를 지원해야 합니다. 지원하지 않으면 `V`를 누를 때 이유를 toast로 알리고 시작하지 않습니다.
+
+영상은 Capture와 같은 위치와 이름 규칙으로 `captures/<sketch>/<sketch>_<YYYYMMDD-HHmmss>_<W>x<H>.mp4`에 저장되고, 옆에 같은 이름의 `.json` sidecar가 생깁니다. 이름이 겹치면 `-2`를 붙입니다. sidecar에는 Sketch, 크기, Output size, render scale, Feedback 여부, fps, frame 수, 길이, 녹화 시작 시점의 Parameter 값(`paramsAtStart`), git 커밋, 녹화 시각이 들어갑니다. dev server가 없거나 저장에 실패하면 mp4만 다운로드됩니다.
+
 ## 라이선스
 
 - 엔진, 플러그인, `lib/` 등 이 저장소의 자체 코드는 [MIT](LICENSE)입니다.
 - `sketches/`의 Sketch와 `captures/`의 Capture에는 라이선스를 부여하지 않습니다.
+- Recording의 mp4 작성에 [Mediabunny](https://mediabunny.dev)를 npm 의존성으로 씁니다. Mediabunny는 [MPL-2.0](https://www.mozilla.org/MPL/2.0/)이며 저장소에 복사하거나 수정하지 않습니다.
 - [lygia](https://lygia.xyz)는 대부분 Prosperity 3.0.0 라이선스라 비상업용으로만 씁니다. lygia는 선택 사항이며 저장소에 복사하지 않습니다. 어떤 Sketch가 lygia를 쓰는지는 `grep -r '#include "lygia/' sketches`로 알 수 있습니다([ADR-0003](docs/adr/0003-lygia-optional-non-commercial.md)).
