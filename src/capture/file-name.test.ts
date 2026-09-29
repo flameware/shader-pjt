@@ -50,4 +50,9 @@ describe('numberedFileName', () => {
     expect(numberedFileName(name, 2)).toBe('flow_20260928-213045_800x600-2.png');
     expect(numberedFileName(name, 13)).toBe('flow_20260928-213045_800x600-13.png');
   });
+
+  it('numbers Recording files (mp4, json) the same way', () => {
+    expect(numberedFileName('flow_20260928-213045_2160x2700.mp4', 2)).toBe('flow_20260928-213045_2160x2700-2.mp4');
+    expect(numberedFileName('flow_20260928-213045_2160x2700.json', 3)).toBe('flow_20260928-213045_2160x2700-3.json');
+  });
 });

@@ -135,6 +135,13 @@ async function start(): Promise<void> {
     engine,
     pane: panel.pane,
     settings: createRecordingSettings(name, browserStorage()),
+    // The sidecar JSON's description of the Sketch when the Recording starts (#44).
+    describe: () => ({
+      output: output.output(),
+      renderScale: effectiveRenderScale(output.output(), output.renderScale()),
+      feedback: engine.hasFeedback(),
+      paramsAtStart: parameters.snapshot(),
+    }),
   });
 
   // Every Pass compiles, including ones that don't run, so their errors show too. Include and

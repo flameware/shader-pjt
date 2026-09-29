@@ -1,11 +1,12 @@
 import type { Pane } from 'tweakpane';
-import { captureFileName, localTimestamp } from '../capture/file-name';
-import { downloadFile } from '../capture/save';
+import { localTimestamp } from '../capture/file-name';
 import type { ClockTick } from '../engine/clock';
 import type { Engine } from '../engine/engine';
 import { type VideoRecorder, startVideoRecorder } from '../recording/encoder';
 import { videoSize } from '../recording/encoding';
 import { SAFETY_LIMIT_S, recordingEnd } from '../recording/length';
+import { type RecordingMetadataInput, recordingMetadata } from '../recording/metadata';
+import { recordingSavedText, saveRecording } from '../recording/save';
 import type { RecordingSettings } from '../recording/settings';
 import type { BrowserUi } from './browser-ui';
 import { type RecordingFolder, mountRecordingFolder } from './recording-folder';
@@ -23,7 +24,12 @@ export interface RecordingOptions {
   pane: Pane;
   /** The Sketch's max length (#45). */
   settings: RecordingSettings;
+  /** What the sidecar JSON records about the Sketch, read when the Recording starts (#44). */
+  describe(): RecordingDescription;
 }
+
+/** The Output size, (effective) render scale, Feedback and Parameter values a Recording starts with. */
+export type RecordingDescription = Pick<RecordingMetadataInput, 'output' | 'renderScale' | 'feedback' | 'paramsAtStart'>;
 
 export interface Recording {
   /**
@@ -41,11 +47,11 @@ type State =
   | { kind: 'idle' }
   /** Waiting for the encoder; `V` again cancels. */
   | { kind: 'starting'; cancelled: boolean }
-  | { kind: 'recording'; recorder: VideoRecorder; startedAt: string };
+  | { kind: 'recording'; recorder: VideoRecorder; startedAt: string; described: RecordingDescription };
 
 /**
- * Recording (#43): `V` starts it and `V` again ends it and downloads the mp4. While it runs the
- * clock takes fixed 1/60 s steps (ADR-0006) and every frame whose time advanced becomes one video
+ * Recording (#43): `V` starts it and `V` again ends it and saves the mp4 (#44: under `captures/`
+ * with a sidecar JSON, or as a download). While it runs the clock takes fixed 1/60 s steps (ADR-0006) and every frame whose time advanced becomes one video
  * frame, so a paused stretch is left out and a `.` step adds one frame.
  *
  * #45: the panel's Recording folder does the same as `V` and picks the max length; the Recording
@@ -79,13 +85,13 @@ export function mountRecording(ui: BrowserUi, options: RecordingOptions): Record
       return;
     }
     recorder = result.recorder;
-    state = { kind: 'recording', recorder, startedAt: localTimestamp(new Date()) };
+    state = { kind: 'recording', recorder, startedAt: localTimestamp(new Date()), described: options.describe() };
     engine.setFixedStep(true);
   };
 
   const stop = async () => {
     if (state.kind !== 'recording') return;
-    const { recorder, startedAt } = state;
+    const { recorder, startedAt, described } = state;
     state = { kind: 'idle' };
     engine.setFixedStep(false);
     if (recorder.frames() === 0) {
@@ -94,9 +100,8 @@ export function mountRecording(ui: BrowserUi, options: RecordingOptions): Record
     }
     try {
       const mp4 = await recorder.finish();
-      const fileName = captureFileName(options.sketch, startedAt, recorder.size, 'mp4');
-      downloadFile(mp4, fileName, 'video/mp4');
-      ui.toasts.show(`Recording 저장 (다운로드): ${fileName}`, { durationMs: TOAST_MS });
+      const meta = recordingMetadata({ ...described, sketch: options.sketch, size: recorder.size, frames: recorder.frames(), recordedAt: startedAt });
+      ui.toasts.show(recordingSavedText(await saveRecording(meta, mp4)), { durationMs: TOAST_MS });
     } catch (error) {
       console.error('[recording] saving failed', error);
       ui.toasts.show(`Recording 저장 실패: ${messageOf(error)}`, { durationMs: TOAST_MS });

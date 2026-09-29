@@ -37,7 +37,7 @@ export function captureFileName(
   return `${sketch}_${y}${mo}${d}-${h}${mi}${s}_${width}x${height}.${extension}`;
 }
 
-/** The `n`th candidate for a file name: itself first, then `-2`, `-3` … before `.png`. */
+/** The `n`th candidate for a file name: itself first, then `-2`, `-3` … before the extension. */
 export function numberedFileName(name: string, n: number): string {
-  return n <= 1 ? name : name.replace(/\.png$/, `-${n}.png`);
+  return n <= 1 ? name : name.replace(/(\.[^.]+)?$/, `-${n}$1`);
 }
