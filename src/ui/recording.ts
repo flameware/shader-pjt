@@ -2,12 +2,13 @@ import type { Pane } from 'tweakpane';
 import { localTimestamp } from '../capture/file-name';
 import type { ClockTick } from '../engine/clock';
 import type { Engine } from '../engine/engine';
+import type { OutputSettings } from '../output/settings';
 import { type VideoRecorder, startVideoRecorder } from '../recording/encoder';
-import { videoSize } from '../recording/encoding';
 import { SAFETY_LIMIT_S, recordingEnd } from '../recording/length';
 import { type RecordingMetadataInput, recordingMetadata } from '../recording/metadata';
 import { recordingSavedText, saveRecording } from '../recording/save';
 import type { RecordingSettings } from '../recording/settings';
+import { type RecordingStop, outputStop, recordingAvailability, recordingStopText, renderSizeStop } from '../recording/stops';
 import type { BrowserUi } from './browser-ui';
 import { type RecordingFolder, mountRecordingFolder } from './recording-folder';
 import { mountRecordingIndicator } from './recording-indicator';
@@ -24,6 +25,8 @@ export interface RecordingOptions {
   pane: Pane;
   /** The Sketch's max length (#45). */
   settings: RecordingSettings;
+  /** Output size and render scale: `fit` at a preset blocks starting, and a change ends a Recording (#46). */
+  output: Pick<OutputSettings, 'output' | 'renderScale' | 'subscribe'>;
   /** What the sidecar JSON records about the Sketch, read when the Recording starts (#44). */
   describe(): RecordingDescription;
 }
@@ -39,7 +42,13 @@ export interface Recording {
   ready(): boolean;
   /** Call every animation frame right after `engine.frame`; encodes the frame if time advanced. */
   frame(tick: ClockTick): void;
-  /** The panel's Recording folder; its `toggle` button can be disabled with a reason, as Capture's is. */
+  /**
+   * Ends a running Recording (or cancels one still starting) for `reason`, telling why in a toast,
+   * and resolves once it is saved, with the toast that says where. Also waits for a save already
+   * under way, so a Sketch switch can go right after (#46).
+   */
+  stop(reason: RecordingStop): Promise<string | null>;
+  /** The panel's Recording folder. */
   folder: RecordingFolder;
 }
 
@@ -47,7 +56,14 @@ type State =
   | { kind: 'idle' }
   /** Waiting for the encoder; `V` again cancels. */
   | { kind: 'starting'; cancelled: boolean }
-  | { kind: 'recording'; recorder: VideoRecorder; startedAt: string; described: RecordingDescription };
+  | {
+      kind: 'recording';
+      recorder: VideoRecorder;
+      /** The canvas's render size the video was set up for; a new one ends the Recording (#46). */
+      renderSize: readonly [number, number];
+      startedAt: string;
+      described: RecordingDescription;
+    };
 
 /**
  * Recording (#43): `V` starts it and `V` again ends it and saves the mp4 (#44: under `captures/`
@@ -57,10 +73,18 @@ type State =
  * #45: the panel's Recording folder does the same as `V` and picks the max length; the Recording
  * ends on the exact frame that reaches it, or at the 60 s safety limit without one. A red dot
  * with the video time and frame count shows while it runs.
+ *
+ * #46: at a preset Output size it only starts under `full` (ADR-0006). Anything that changes the
+ * frame size (Sketch switch, Output size, render scale, the window in `window`) ends it and saves
+ * what was recorded, with the reason in a toast. Reset, hot reload, pause and speed carry on.
+ * Leaving the page while it runs or saves asks first.
  */
 export function mountRecording(ui: BrowserUi, options: RecordingOptions): Recording {
-  const { canvas, engine } = options;
+  const { canvas, engine, output } = options;
   let state: State = { kind: 'idle' };
+  /** Saves under way; the page shouldn't be left before they finish. */
+  const saving = new Set<Promise<string | null>>();
+  const availability = () => recordingAvailability({ output: output.output(), renderScale: output.renderScale() });
 
   const start = async () => {
     const starting = { kind: 'starting' as const, cancelled: false };
@@ -75,7 +99,8 @@ export function mountRecording(ui: BrowserUi, options: RecordingOptions): Record
       engine.setFixedStep(false);
       ui.toasts.show(`Recording 실패: ${error.message}`, { durationMs: TOAST_MS });
     };
-    const result = await startVideoRecorder([canvas.width, canvas.height], onError).catch(
+    const renderSize = [canvas.width, canvas.height] as const;
+    const result = await startVideoRecorder(renderSize, onError).catch(
       (error: unknown) => ({ ok: false, reason: `Recording을 시작하지 못했습니다: ${messageOf(error)}` }) as const,
     );
     if (starting.cancelled || !result.ok) {
@@ -85,37 +110,75 @@ export function mountRecording(ui: BrowserUi, options: RecordingOptions): Record
       return;
     }
     recorder = result.recorder;
-    state = { kind: 'recording', recorder, startedAt: localTimestamp(new Date()), described: options.describe() };
+    state = { kind: 'recording', recorder, renderSize, startedAt: localTimestamp(new Date()), described: options.describe() };
     engine.setFixedStep(true);
   };
 
-  const stop = async () => {
-    if (state.kind !== 'recording') return;
-    const { recorder, startedAt, described } = state;
-    state = { kind: 'idle' };
-    engine.setFixedStep(false);
+  /** Ends the Recording and saves it; resolves with the toast shown (or `null` when nothing ran). */
+  const save = async (recording: Extract<State, { kind: 'recording' }>): Promise<string | null> => {
+    const { recorder, startedAt, described } = recording;
     if (recorder.frames() === 0) {
       recorder.cancel();
-      return ui.toasts.show('녹화된 frame이 없어 저장하지 않았습니다');
+      const text = '녹화된 frame이 없어 저장하지 않았습니다';
+      ui.toasts.show(text);
+      return text;
     }
+    let text: string;
     try {
       const mp4 = await recorder.finish();
       const meta = recordingMetadata({ ...described, sketch: options.sketch, size: recorder.size, frames: recorder.frames(), recordedAt: startedAt });
-      ui.toasts.show(recordingSavedText(await saveRecording(meta, mp4)), { durationMs: TOAST_MS });
+      text = recordingSavedText(await saveRecording(meta, mp4));
     } catch (error) {
       console.error('[recording] saving failed', error);
-      ui.toasts.show(`Recording 저장 실패: ${messageOf(error)}`, { durationMs: TOAST_MS });
+      text = `Recording 저장 실패: ${messageOf(error)}`;
     }
+    ui.toasts.show(text, { durationMs: TOAST_MS });
+    return text;
+  };
+
+  /** Ends a running Recording, first telling why when `reason` says it ended early. */
+  const stop = (reason?: RecordingStop): Promise<string | null> => {
+    if (state.kind === 'starting') {
+      state.cancelled = true;
+      return Promise.resolve(null);
+    }
+    if (state.kind !== 'recording') return Promise.all(saving).then((texts) => texts.at(-1) ?? null);
+    const recording = state;
+    state = { kind: 'idle' };
+    engine.setFixedStep(false);
+    if (reason !== undefined) ui.toasts.show(recordingStopText(reason), { durationMs: TOAST_MS });
+    const saved = save(recording);
+    saving.add(saved);
+    void saved.finally(() => saving.delete(saved));
+    return saved;
   };
 
   const toggle = () => {
-    if (state.kind === 'idle') void start();
-    else if (state.kind === 'starting') state.cancelled = true;
+    if (state.kind === 'idle') {
+      const current = availability();
+      // The button is disabled then; `V` gives the same reason as its tooltip.
+      if (!current.ok) return ui.toasts.show(current.reason);
+      void start();
+    } else if (state.kind === 'starting') state.cancelled = true;
     else void stop();
   };
   ui.keymap.add({ keys: ['V'], description: 'Recording 시작 / 끝', run: toggle });
   const folder = mountRecordingFolder(options.pane, options.settings, toggle);
   const indicator = mountRecordingIndicator(document.body);
+
+  // Any Output size or render scale change resizes the frame: end the Recording (or a start that
+  // would come up at the old size) before the next frame is drawn at the new one.
+  output.subscribe(() => {
+    if (state.kind === 'starting') state.cancelled = true;
+    if (state.kind !== 'recording') return;
+    const reason = outputStop(state.described, { output: output.output(), renderScale: output.renderScale() });
+    if (reason !== null) void stop(reason);
+  });
+  window.addEventListener('beforeunload', (event) => {
+    if (state.kind !== 'recording' && saving.size === 0) return;
+    event.preventDefault();
+    event.returnValue = ''; // older browsers only ask when this is set
+  });
 
   /** Adds the frame on screen, then ends the Recording right there once it is long enough (#45). */
   const record = (recorder: VideoRecorder) => {
@@ -127,22 +190,25 @@ export function mountRecording(ui: BrowserUi, options: RecordingOptions): Record
   };
 
   const render = () => {
-    folder.render(state.kind);
+    const current = availability();
+    folder.render(state.kind, current.ok ? null : current.reason);
     indicator.render(state.kind === 'recording' ? state.recorder.frames() : null, ui.hud.state());
   };
 
   return {
     folder,
 
+    stop,
+
     ready: () => state.kind !== 'recording' || !state.recorder.busy(),
 
     frame(tick) {
-      if (state.kind === 'recording' && tick.advanced) {
-        const { recorder } = state;
-        const [width, height] = videoSize([canvas.width, canvas.height]);
-        // A new frame size can't go into the same video: end it with what was recorded so far.
-        if (width !== recorder.size[0] || height !== recorder.size[1]) void stop();
-        else record(recorder);
+      if (state.kind === 'recording') {
+        // A new render size (the window, in `window`) can't go into the same video: end it with
+        // what was recorded so far. Checked even while paused, so the reason shows right away.
+        const reason = renderSizeStop(state.renderSize, [canvas.width, canvas.height]);
+        if (reason !== null) void stop(reason);
+        else if (tick.advanced) record(state.recorder);
       }
       render();
     },

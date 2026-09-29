@@ -19,10 +19,10 @@ import type { ShaderSource } from './shader-source';
 import { sketchConfigFile, sketchPassFiles } from './sketch/files';
 import { buildPassGraph } from './sketch/graph';
 import { sketchNames } from './sketch/pick';
-import { browserSwitchPage, createSketchSwitch } from './sketch/switch';
+import { type SketchSwitch, browserSwitchPage, createSketchSwitch } from './sketch/switch';
 import { mountBanner } from './ui/banner';
 import { mountParameterPanel } from './ui/parameter-panel';
-import { mountRecording } from './ui/recording';
+import { type Recording, mountRecording } from './ui/recording';
 import { bannerView } from './ui/banner-view';
 import { mountBrowserUi } from './ui/browser-ui';
 import { mountCapture } from './ui/capture';
@@ -83,8 +83,20 @@ async function start(): Promise<void> {
   // HUD, play bar, toasts and the keymap (#18). Later features mount into `ui.hud` regions,
   // add keys with `ui.keymap.add` and notify with `ui.toasts.show`.
   const ui = mountBrowserUi(document.body, engine);
-  // Sketch name, palette, `[`/`]` and the switch to a new Sketch folder (#20).
-  const picker = mountSketchPicker(document.body, ui, { names, current: name, sketchSwitch });
+  // Sketch name, palette, `[`/`]` and the switch to a new Sketch folder (#20). A switch first ends
+  // a running Recording and waits until it is saved under this Sketch (#46); where it went is
+  // shown on arrival, since this page's toast goes with the reload.
+  let recording: Recording | undefined;
+  const switchAfterRecording: SketchSwitch = {
+    open: (list) => sketchSwitch.open(list),
+    go(next, options = {}) {
+      void (recording?.stop('sketch') ?? Promise.resolve(null)).then((saved) => {
+        const notice = [options.notice, saved].filter((text) => text != null).join(' · ');
+        sketchSwitch.go(next, { ...options, ...(notice ? { notice } : {}) });
+      });
+    },
+  };
+  const picker = mountSketchPicker(document.body, ui, { names, current: name, sketchSwitch: switchAfterRecording });
   if (notice !== null) ui.toasts.show(notice);
 
   const { passFiles, diagnostics: fileProblems } = sketchPassFiles(name, Object.keys(fragModules));
@@ -128,13 +140,15 @@ async function start(): Promise<void> {
 
   // Recording (#43, #45): `V` or the panel's Recording folder (after Capture) starts and ends it.
   // The clock takes fixed steps meanwhile (ADR-0006) and each frame whose time advanced is encoded
-  // right after it is drawn. The max length is kept per Sketch in localStorage.
-  const recording = mountRecording(ui, {
+  // right after it is drawn. The max length is kept per Sketch in localStorage. A new frame size
+  // (Output size, render scale, the window) ends it and saves what was recorded (#46).
+  recording = mountRecording(ui, {
     sketch: name,
     canvas,
     engine,
     pane: panel.pane,
     settings: createRecordingSettings(name, browserStorage()),
+    output,
     // The sidecar JSON's description of the Sketch when the Recording starts (#44).
     describe: () => ({
       output: output.output(),
