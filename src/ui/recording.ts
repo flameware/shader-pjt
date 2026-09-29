@@ -8,7 +8,7 @@ import { SAFETY_LIMIT_S, recordingEnd } from '../recording/length';
 import { type RecordingMetadataInput, recordingMetadata } from '../recording/metadata';
 import { recordingSavedText, saveRecording } from '../recording/save';
 import type { RecordingSettings } from '../recording/settings';
-import { type RecordingStop, outputStop, recordingAvailability, recordingStopText, renderSizeStop } from '../recording/stops';
+import { type RecordingStop, outputStop, playsOnStart, recordingAvailability, recordingStopText, renderSizeStop } from '../recording/stops';
 import type { BrowserUi } from './browser-ui';
 import { type RecordingFolder, mountRecordingFolder } from './recording-folder';
 import { mountRecordingIndicator } from './recording-indicator';
@@ -20,7 +20,7 @@ const messageOf = (error: unknown) => (error instanceof Error ? error.message : 
 export interface RecordingOptions {
   sketch: string;
   canvas: HTMLCanvasElement;
-  engine: Pick<Engine, 'setFixedStep'>;
+  engine: Pick<Engine, 'setFixedStep' | 'reset' | 'playback'>;
   /** The panel the Recording folder joins, after Capture. */
   pane: Pane;
   /** The Sketch's max length (#45). */
@@ -78,12 +78,16 @@ type State =
  * frame size (Sketch switch, Output size, render scale, the window in `window`) ends it and saves
  * what was recorded, with the reason in a toast. Reset, hot reload, pause and speed carry on.
  * Leaving the page while it runs or saves asks first.
+ *
+ * Started while paused on frame 0 (after `R` while paused), it also starts playback from frame 0.
  */
 export function mountRecording(ui: BrowserUi, options: RecordingOptions): Recording {
   const { canvas, engine, output } = options;
   let state: State = { kind: 'idle' };
   /** A Sketch switch is under way: no new Recording starts on a page about to reload. */
   let leaving = false;
+  /** `iFrame` of the last frame drawn: paused on 0, starting a Recording also plays (`playsOnStart`). */
+  let lastFrame = -1;
   /** Saves under way; the page shouldn't be left before they finish. */
   const saving = new Set<Promise<string | null>>();
   const availability = () => recordingAvailability({ output: output.output(), renderScale: output.renderScale() });
@@ -112,6 +116,11 @@ export function mountRecording(ui: BrowserUi, options: RecordingOptions): Record
       return;
     }
     recorder = result.recorder;
+    // Paused on frame 0 (after `R`): draw frame 0 again and play, so the video starts there.
+    if (playsOnStart(engine.playback.isPaused(), lastFrame)) {
+      engine.reset();
+      engine.playback.setPaused(false);
+    }
     state = { kind: 'recording', recorder, renderSize, startedAt: localTimestamp(new Date()), described: options.describe() };
     engine.setFixedStep(true);
   };
@@ -205,6 +214,7 @@ export function mountRecording(ui: BrowserUi, options: RecordingOptions): Record
     ready: () => state.kind !== 'recording' || !state.recorder.busy(),
 
     frame(tick) {
+      lastFrame = tick.frame;
       if (state.kind === 'recording') {
         // A new render size (the window, in `window`) can't go into the same video: end it with
         // what was recorded so far. Checked even while paused (a frozen Feedback Sketch's canvas

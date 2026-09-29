@@ -22,6 +22,13 @@ export function recordingAvailability(input: OutputChoice): RecordingAvailabilit
 }
 
 /**
+ * Whether starting a Recording also starts playback: the Sketch is paused on frame 0, as after
+ * `R` while paused. The Recording then begins at frame 0 instead of recording nothing until
+ * Space. Paused anywhere else stays paused, so `.` can still record frame by frame.
+ */
+export const playsOnStart = (paused: boolean, frame: number) => paused && frame === 0;
+
+/**
  * Why a Recording ended early: every one changes the frame size, which can't change inside one
  * video, so the Recording ends and what was recorded so far is saved. Reset, hot reload, pause
  * and speed keep the frame size, so they never end one.
