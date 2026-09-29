@@ -92,6 +92,33 @@ describe('switching Sketches', () => {
     expect(page.reloads).toBe(1);
   });
 
+  it('waits for a Recording to be saved before reloading, with where it went in the notice', async () => {
+    const page = fakePage('http://localhost/?sketch=2026-09-26');
+    let saved!: (text: string) => void;
+    const saving = new Promise<string | null>((resolve) => (saved = resolve));
+    createSketchSwitch(page).go('2026-09-27', { waitFor: saving });
+    expect(page.reloads).toBe(0);
+    page.time = 10_000; // a long save doesn't let the notice expire
+    saved('Recording 저장: captures/2026-09-26/a.mp4');
+    await saving;
+    await Promise.resolve();
+    expect(page.reloads).toBe(1);
+    expect(createSketchSwitch(page).open(names).notice).toBe('Recording 저장: captures/2026-09-26/a.mp4');
+  });
+
+  it('rewrites ?sketch before the save, so a reload that comes sooner (a new Sketch folder) still opens the new Sketch', async () => {
+    const page = fakePage('http://localhost/?sketch=2026-09-26');
+    const saving = Promise.resolve('Recording 저장: x.mp4');
+    createSketchSwitch(page).go('2026-09-28', { notice: '새 Sketch: 2026-09-28', reload: 'fallback', waitFor: saving });
+    expect(page.href).toBe('http://localhost/?sketch=2026-09-28');
+    await saving;
+    await Promise.resolve();
+    expect(page.reloads).toBe(0);
+    page.runTimers();
+    expect(page.reloads).toBe(1);
+    expect(createSketchSwitch(page).open(names).notice).toBe('새 Sketch: 2026-09-28 · Recording 저장: x.mp4');
+  });
+
   it('works without storage (private mode): the switch still happens, the notice is dropped', () => {
     const page = { ...fakePage('http://localhost/?sketch=2026-09-26'), storage: null };
     const sketchSwitch = createSketchSwitch(page);

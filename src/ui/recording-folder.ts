@@ -6,10 +6,13 @@ import type { RecordingSettings } from '../recording/settings';
 export type RecordingPhase = 'idle' | 'starting' | 'recording';
 
 export interface RecordingFolder {
-  /** Start / end (`V`). Set `disabled` and `element.title` to block starting, as Capture does. */
+  /** Start / end (`V`). */
   toggle: ButtonApi;
-  /** Call every animation frame; the button title follows the phase. */
-  render(phase: RecordingPhase): void;
+  /**
+   * Call every animation frame; the button title follows the phase. `blocked` is why a Recording
+   * can't start now (`fit` at a preset, #46): the idle button is then disabled with it as tooltip, as Capture's is.
+   */
+  render(phase: RecordingPhase, blocked: string | null): void;
 }
 
 const TITLES: Record<RecordingPhase, string> = {
@@ -17,6 +20,8 @@ const TITLES: Record<RecordingPhase, string> = {
   starting: '● 시작 중…',
   recording: '■ 녹화 끝',
 };
+
+const IDLE_TOOLTIP = 'Recording 시작 / 끝 (V)';
 
 const lengthKey = (length: MaxLength) => (length === null ? 'none' : String(length));
 
@@ -45,13 +50,20 @@ export function mountRecordingFolder(pane: Pane, settings: RecordingSettings, to
   });
   settings.subscribe(() => pane.refresh());
 
+  button.element.title = IDLE_TOOLTIP;
   let shown: RecordingPhase = 'idle';
+  let shownBlocked: string | null = null;
   return {
     toggle: button,
-    render(phase) {
-      if (phase === shown) return;
+    render(phase, blocked) {
+      // Only starting is blocked: a running Recording can always be ended.
+      const reason = phase === 'idle' ? blocked : null;
+      if (phase === shown && reason === shownBlocked) return;
       shown = phase;
+      shownBlocked = reason;
       button.title = TITLES[phase];
+      button.disabled = reason !== null;
+      button.element.title = reason ?? IDLE_TOOLTIP;
     },
   };
 }

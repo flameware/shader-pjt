@@ -12,4 +12,4 @@ While a Recording runs, the sketch's clock ignores how much real time passed bet
 - While recording, on-screen motion can run slower than real time; that is expected, not a bug.
 - The clock needs a mode where each tick advances a fixed step instead of the measured wall-clock delta.
 - Like ADR 0001, a Recording keeps what was performed live, rather than reproducing a run deterministically.
-- A Recording saves exactly what the engine renders. At a preset Output size it is only offered at full render scale, the same rule ADR 0001 sets for an Output-size Capture. Anything that changes the frame size (switching sketch, Output size or render scale) ends the Recording and saves what was recorded so far.
+- A Recording saves exactly what the engine renders. At a preset Output size it is only offered at full render scale, the same rule ADR 0001 sets for an Output-size Capture. Anything that changes the frame size (switching sketch, Output size or render scale, or resizing the window under `window`) ends the Recording and saves what was recorded so far.
