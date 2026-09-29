@@ -1,4 +1,5 @@
-import { RECORDING_FPS } from './encoding';
+// Imports carry `.ts`: plugins/recording.ts loads this module into the Vite config too.
+import { RECORDING_FPS } from './encoding.ts';
 
 /**
  * How long a Recording may run (#42 decisions 2, 13): a chosen max length, or none. Length is

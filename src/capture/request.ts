@@ -7,17 +7,36 @@ import { pngSize } from './png.ts';
 export const CAPTURE_ENDPOINT = '/__capture';
 
 /**
- * The body of `POST /__capture`: a 4-byte big-endian length, the metadata as UTF-8 JSON, then
- * the PNG. Binary, so a 4K Capture isn't inflated by base64; the JSON comes first so the dev
- * server can validate it before touching the disk.
+ * The body of a save request to the dev server (`POST /__capture`, `POST /__recording`): a
+ * 4-byte big-endian length, the metadata as UTF-8 JSON, then the file. Binary, so a 4K Capture
+ * isn't inflated by base64; the JSON comes first so the dev server can validate it before
+ * touching the disk.
  */
-export function encodeCaptureRequest(meta: CaptureMetadata, png: Uint8Array): Uint8Array<ArrayBuffer> {
+export function encodeFramedRequest(meta: unknown, file: Uint8Array): Uint8Array<ArrayBuffer> {
   const json = new TextEncoder().encode(JSON.stringify(meta));
-  const body = new Uint8Array(4 + json.length + png.length);
+  const body = new Uint8Array(4 + json.length + file.length);
   new DataView(body.buffer).setUint32(0, json.length);
   body.set(json, 4);
-  body.set(png, 4 + json.length);
+  body.set(file, 4 + json.length);
   return body;
+}
+
+/** A `encodeFramedRequest` body split back into its (unchecked) metadata and file, or why it can't be. */
+export function splitFramedRequest(body: Uint8Array): { ok: true; meta: unknown; file: Uint8Array } | { ok: false; error: string } {
+  if (body.length < 4) return { ok: false, error: '요청 본문이 너무 짧습니다.' };
+  const length = new DataView(body.buffer, body.byteOffset, body.byteLength).getUint32(0);
+  if (4 + length > body.length) return { ok: false, error: '메타데이터 길이가 본문보다 깁니다.' };
+  try {
+    const meta: unknown = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(body.subarray(4, 4 + length)));
+    return { ok: true, meta, file: body.subarray(4 + length) };
+  } catch {
+    return { ok: false, error: '메타데이터 JSON을 읽을 수 없습니다.' };
+  }
+}
+
+/** The body of `POST /__capture`: the metadata and the PNG (see `encodeFramedRequest`). */
+export function encodeCaptureRequest(meta: CaptureMetadata, png: Uint8Array): Uint8Array<ArrayBuffer> {
+  return encodeFramedRequest(meta, png);
 }
 
 /** A checked request, or why it was refused. */
@@ -41,7 +60,8 @@ export function isSafeSketchName(name: unknown): name is string {
   );
 }
 
-const isSide = (n: unknown) => Number.isInteger(n) && (n as number) > 0 && (n as number) <= MAX_SIDE;
+/** Whether `n` is a usable frame side in pixels. */
+export const isSide = (n: unknown) => Number.isInteger(n) && (n as number) > 0 && (n as number) <= MAX_SIDE;
 
 /** What is wrong with `meta` for naming and writing the file, or `null`. */
 function metadataProblem(meta: unknown): string | null {
@@ -57,18 +77,11 @@ function metadataProblem(meta: unknown): string | null {
 
 /** Splits and checks a `POST /__capture` body. The metadata's size must match the PNG's. */
 export function decodeCaptureRequest(body: Uint8Array): DecodedCaptureRequest {
-  if (body.length < 4) return { ok: false, error: '요청 본문이 너무 짧습니다.' };
-  const length = new DataView(body.buffer, body.byteOffset, body.byteLength).getUint32(0);
-  if (4 + length > body.length) return { ok: false, error: '메타데이터 길이가 본문보다 깁니다.' };
-  let meta: unknown;
-  try {
-    meta = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(body.subarray(4, 4 + length)));
-  } catch {
-    return { ok: false, error: '메타데이터 JSON을 읽을 수 없습니다.' };
-  }
+  const split = splitFramedRequest(body);
+  if (!split.ok) return split;
+  const { meta, file: png } = split;
   const problem = metadataProblem(meta);
   if (problem) return { ok: false, error: problem };
-  const png = body.subarray(4 + length);
   const size = pngSize(png);
   if (!size) return { ok: false, error: '본문이 PNG가 아닙니다.' };
   const [width, height] = (meta as CaptureMetadata).size;
