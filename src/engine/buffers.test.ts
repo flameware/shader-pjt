@@ -77,6 +77,7 @@ describe('graphBufferSizes', () => {
       main: node('main', { scale: 1 }),
     },
     order: ['blur', 'lut', 'main'],
+    images: [],
   };
 
   it('recomputes scale against the size rendered at (the Output size, #24) and keeps a fixed size, for every Pass that runs', () => {

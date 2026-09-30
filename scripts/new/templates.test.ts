@@ -29,6 +29,7 @@ describe('Templates', () => {
     const { graph, diagnostics } = buildPassGraph({
       sketchFile: 'templates/feedback/sketch.ts',
       passFiles: { main: 'templates/feedback/main.frag' },
+      imageFiles: [],
       config: feedbackConfig,
       floatLinear: true,
     });

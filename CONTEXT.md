@@ -21,7 +21,7 @@ The pass whose output is what appears on screen; it always runs last.
 _Avoid_: image pass, final pass
 
 **Channel**:
-One of the four input slots (`iChannel0..3`) through which a pass receives another pass's output.
+One of the four input slots (`iChannel0..3`) through which a pass receives another pass's output, or an image file from the sketch's folder. An image is cropped to cover the sketch's render size, so it reads like a full-size pass output.
 _Avoid_: input, texture slot
 
 **Feedback**:

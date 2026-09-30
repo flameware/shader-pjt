@@ -26,6 +26,8 @@ export type Playback = Pick<Clock, 'setPaused' | 'isPaused' | 'step' | 'setSpeed
 export interface Engine {
   /** Swaps one Pass's shader if it compiles. Keeps time, `iFrame` and Feedback. */
   setShader(pass: string, shader: ShaderSource): SwapResult;
+  /** Sets or replaces an image Channel's image (#54). Keeps time, `iFrame` and Feedback, like a shader swap. */
+  setImage(path: string, image: ImageBitmap | null): string | null;
   /** Replaces the pass graph (`null`: nothing runs) and resets. */
   setGraph(graph: PassGraph | null): void;
   /** Whether a compiled version of the whole graph is on screen. */
@@ -58,6 +60,7 @@ export function createEngine(renderer: Renderer, clock: Clock): Engine {
   let feedback = false;
   return {
     setShader: (pass, shader) => renderer.setShader(pass, shader),
+    setImage: (path, image) => renderer.setImage(path, image),
     setGraph(graph) {
       renderer.setGraph(graph);
       feedback = graph !== null && graph.order.some((name) => graph.passes[name]?.feedback);

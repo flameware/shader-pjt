@@ -9,6 +9,7 @@ function fakeRenderer() {
   let clears = 0;
   const renderer: Renderer = {
     setShader: () => ({ ok: true }),
+    setImage: () => null,
     setGraph: () => {},
     isRunning: () => true,
     clearBuffers: () => void clears++,
@@ -24,10 +25,11 @@ const node = (name: string, feedback: boolean): PassNode => ({
   buffer: { format: 'rgba16f', filter: 'linear', wrap: 'clamp', size: { scale: 1 } },
   feedback,
 });
-const graph: PassGraph = { passes: { main: node('main', false) }, order: ['main'] };
+const graph: PassGraph = { passes: { main: node('main', false) }, order: ['main'], images: [] };
 const feedbackGraph: PassGraph = {
   passes: { trail: node('trail', true), main: node('main', false) },
   order: ['trail', 'main'],
+  images: [],
 };
 const size = { width: 4, height: 3, mouse: [0, 0, 0, 0] as const };
 

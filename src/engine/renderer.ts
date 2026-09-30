@@ -5,6 +5,7 @@ import type { ShaderSource } from '../shader-source';
 import { MAX_CHANNELS, type PassGraph, type PassNode } from '../sketch/graph';
 import { type Slots, bufferSize, createSlots, graphBufferSizes } from './buffers';
 import type { FrameTime } from './clock';
+import { coverCrop } from './cover';
 import type { ParameterUniform } from '../params/values';
 import { type ActiveUniform, type UniformLocations, parameterUniforms, setParameterUniforms, uniformLocations } from './uniforms';
 import { wrapMainImage } from './wrap';
@@ -33,6 +34,23 @@ interface PassBuffer {
   targets: Target[];
 }
 
+/** An image for image Channels, as uploaded: its own size, mipmapped for downscaling. */
+interface SourceImage {
+  texture: WebGLTexture;
+  width: number;
+  height: number;
+}
+
+/**
+ * What a run's Channels read: Pass buffers by Pass name, and image Channels by image path. An
+ * image Channel reads a render-sized target the image was cover-filled into (#54), so it looks
+ * like a full-size Pass buffer to the shader.
+ */
+interface ChannelSources {
+  buffers: Map<string, PassBuffer>;
+  images: Map<string, Target>;
+}
+
 /**
  * Shows the Main pass's float Feedback buffer on the canvas, clamped to 0..1 (#5). The buffer is
  * render-sized like the canvas, so it is read texel for texel.
@@ -47,6 +65,26 @@ void main() {
 `;
 
 /**
+ * Fills a target with an image, cropped to cover it (`offset`/`scale` from `coverCrop`). Image
+ * rows are uploaded top row first, so v is flipped to put the image's top at the target's top.
+ */
+const COVER_SHADER = `#version 300 es
+precision highp float;
+uniform sampler2D source;
+uniform vec2 size;
+uniform vec2 offset;
+uniform vec2 scale;
+out vec4 color;
+void main() {
+  vec2 uv = offset + gl_FragCoord.xy / size * scale;
+  color = texture(source, vec2(uv.x, 1.0 - uv.y));
+}
+`;
+
+/** Image Channels read `rgba8` values as the file stores them, filtered and clamped at the edges. */
+const IMAGE_TARGET = { format: 'rgba8', filter: 'linear', wrap: 'clamp' } as const;
+
+/**
  * Runs a Sketch's pass graph: each running Pass draws into its buffer in order, and `main` draws
  * to the canvas (through a float buffer when something reads `prev('main')`).
  *
@@ -56,6 +94,12 @@ void main() {
  */
 export interface Renderer {
   setShader(pass: string, shader: ShaderSource): SwapResult;
+  /**
+   * Sets the image an image Channel at `path` reads (`null`: none, so it reads black), replacing
+   * the one before it (hot reload, #54). Time and buffers are untouched. The image is copied, so
+   * the caller may close it. Returns why the image can't be used, or `null`.
+   */
+  setImage(path: string, image: ImageBitmap | null): string | null;
   /**
    * Sets the Passes to run (`null`: run nothing). Buffers start cleared, so this is a reset of
    * Feedback; programs of Passes the graph doesn't have are dropped.
@@ -123,10 +167,20 @@ export function createRenderer(gl: WebGL2RenderingContext): CaptureRenderer {
   const blank = createBlankTexture(gl);
   const present = compileProgram(gl, PRESENT_SHADER);
   if (!present.ok) throw new Error(`present shader failed to compile:\n${present.log}`);
+  const cover = compileProgram(gl, COVER_SHADER);
+  if (!cover.ok) throw new Error(`cover shader failed to compile:\n${cover.log}`);
+  const coverUniforms = {
+    size: gl.getUniformLocation(cover.program, 'size'),
+    offset: gl.getUniformLocation(cover.program, 'offset'),
+    scale: gl.getUniformLocation(cover.program, 'scale'),
+  };
 
   const programs = new Map<string, PassProgram>();
   let graph: PassGraph | null = null;
   let buffers = new Map<string, PassBuffer>();
+  const images = new Map<string, SourceImage>();
+  /** The live image Channel targets, at the render size of the last draw. */
+  const imageTargets = new Map<string, Target>();
 
   const freeBuffers = () => {
     for (const buffer of buffers.values()) for (const target of buffer.targets) deleteTarget(gl, target);
@@ -148,14 +202,46 @@ export function createRenderer(gl: WebGL2RenderingContext): CaptureRenderer {
         : Array.from({ length: count }, () => createTarget(gl, buffer.node.buffer, width, height));
   };
 
-  const bindChannels = (node: PassNode, uniforms: UniformLocations, passBuffers: Map<string, PassBuffer>) => {
+  /** A new render-sized target with `image` cover-filled into it. */
+  const coverTarget = (image: SourceImage, width: number, height: number): Target => {
+    const target = createTarget(gl, IMAGE_TARGET, width, height);
+    const crop = coverCrop(image.width, image.height, width, height);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, target.framebuffer);
+    gl.viewport(0, 0, width, height);
+    gl.useProgram(cover.program);
+    gl.uniform2f(coverUniforms.size, width, height);
+    gl.uniform2f(coverUniforms.offset, ...crop.offset);
+    gl.uniform2f(coverUniforms.scale, ...crop.scale);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, image.texture);
+    drawFullscreen(gl);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    return target;
+  };
+
+  /** Gives every image a live target at this render size, filling it again only when the size changed. */
+  const fitImages = (width: number, height: number) => {
+    for (const [path, image] of images) {
+      const target = imageTargets.get(path);
+      if (target && target.width === width && target.height === height) continue;
+      if (target) deleteTarget(gl, target);
+      imageTargets.set(path, coverTarget(image, width, height));
+    }
+  };
+
+  const bindChannels = (node: PassNode, uniforms: UniformLocations, sources: ChannelSources) => {
     const resolutions = new Float32Array(3 * MAX_CHANNELS);
     // Every unit is rebound each Pass, so a texture left bound from an earlier Pass can never be
     // this Pass's own draw target (a feedback loop WebGL refuses to draw).
     for (let unit = 0; unit < MAX_CHANNELS; unit++) {
       const channel = node.channels[unit];
-      const source = channel && passBuffers.get(channel.pass);
-      const target = source && source.targets[channel.prev ? source.slots.previous() : source.slots.current()];
+      let target: Target | undefined;
+      if (channel && 'image' in channel) {
+        target = sources.images.get(channel.image);
+      } else if (channel) {
+        const source = sources.buffers.get(channel.pass);
+        target = source?.targets[channel.prev ? source.slots.previous() : source.slots.current()];
+      }
       gl.activeTexture(gl.TEXTURE0 + unit);
       gl.bindTexture(gl.TEXTURE_2D, target?.texture ?? blank);
       if (target) resolutions.set([target.width, target.height, 1], unit * 3);
@@ -168,16 +254,16 @@ export function createRenderer(gl: WebGL2RenderingContext): CaptureRenderer {
    * `main` to the canvas when it has no buffer. Taking the buffers as an argument leaves room for
    * an off-screen run at another size (Output size Capture, #24) that never touches the live ones.
    */
-  const runPasses = (current: PassGraph, frame: FrameInputs, passBuffers: Map<string, PassBuffer>) => {
+  const runPasses = (current: PassGraph, frame: FrameInputs, sources: ChannelSources) => {
     for (const name of current.order) {
-      const buffer = passBuffers.get(name);
-      drawPass(current.passes[name]!, buffer?.targets[buffer.slots.write()] ?? null, frame, passBuffers);
+      const buffer = sources.buffers.get(name);
+      drawPass(current.passes[name]!, buffer?.targets[buffer.slots.write()] ?? null, frame, sources);
       buffer?.slots.written();
     }
   };
 
-  /** Draws one Pass into `target` (`null`: the canvas, at the frame's size), reading its Channels from `passBuffers`. */
-  const drawPass = (node: PassNode, target: Target | null, frame: FrameInputs, passBuffers: Map<string, PassBuffer>) => {
+  /** Draws one Pass into `target` (`null`: the canvas, at the frame's size), reading its Channels from `sources`. */
+  const drawPass = (node: PassNode, target: Target | null, frame: FrameInputs, sources: ChannelSources) => {
     const { program, uniforms: u, parameters } = programs.get(node.name)!;
     const [width, height] = target ? [target.width, target.height] : [frame.width, frame.height];
     gl.bindFramebuffer(gl.FRAMEBUFFER, target?.framebuffer ?? null);
@@ -189,7 +275,7 @@ export function createRenderer(gl: WebGL2RenderingContext): CaptureRenderer {
     gl.uniform1i(u.iFrame, frame.frame);
     gl.uniform4f(u.iMouse, ...frame.mouse);
     setParameterUniforms(gl, parameters, frame.parameters ?? []);
-    bindChannels(node, u, passBuffers);
+    bindChannels(node, u, sources);
     drawFullscreen(gl);
   };
 
@@ -236,6 +322,29 @@ export function createRenderer(gl: WebGL2RenderingContext): CaptureRenderer {
       return { ok: true };
     },
 
+    setImage(path, image) {
+      const old = images.get(path);
+      if (old) gl.deleteTexture(old.texture);
+      images.delete(path);
+      const target = imageTargets.get(path);
+      if (target) deleteTarget(gl, target);
+      imageTargets.delete(path);
+      if (!image) return null;
+
+      const tooBig = sizeLimitProblem([[image.width, image.height]], glSizeLimits(gl));
+      if (tooBig) return tooBig.replace('버퍼가', '이미지가');
+      const texture = gl.createTexture()!;
+      gl.bindTexture(gl.TEXTURE_2D, texture);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, image);
+      // Mipmaps keep a large image from aliasing when it is cover-filled into a smaller target.
+      gl.generateMipmap(gl.TEXTURE_2D);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      images.set(path, { texture, width: image.width, height: image.height });
+      return null;
+    },
+
     setGraph(next) {
       freeBuffers();
       drawn = null;
@@ -270,8 +379,9 @@ export function createRenderer(gl: WebGL2RenderingContext): CaptureRenderer {
         fitBuffer(buffer, frame.width, frame.height);
         buffer.slots.beginFrame();
       }
+      fitImages(frame.width, frame.height);
 
-      runPasses(graph, frame, buffers);
+      runPasses(graph, frame, { buffers, images: imageTargets });
 
       const main = buffers.get('main');
       if (main) {
@@ -302,7 +412,7 @@ export function createRenderer(gl: WebGL2RenderingContext): CaptureRenderer {
           drawFullscreen(gl);
         } else {
           // Main again with the same inputs; the buffers it reads are as they were for that frame.
-          drawPass(graph.passes.main!, target, drawn, buffers);
+          drawPass(graph.passes.main!, target, drawn, { buffers, images: imageTargets });
         }
         gl.bindFramebuffer(gl.FRAMEBUFFER, target.framebuffer);
         return { width, height, pixels: readPixels(width, height), frame: drawn, feedback };
@@ -325,6 +435,8 @@ export function createRenderer(gl: WebGL2RenderingContext): CaptureRenderer {
       // One target per running Pass: this run is only for Sketches without Feedback, so no Pass
       // needs a second slot, and `main` gets one too instead of the canvas.
       const temporary = new Map<string, PassBuffer>();
+      // Images are cover-filled at this size too, so the Capture has the screen's composition.
+      const temporaryImages = new Map<string, Target>();
       const targets: Target[] = [];
       try {
         current.order.forEach((name, i) => {
@@ -334,11 +446,16 @@ export function createRenderer(gl: WebGL2RenderingContext): CaptureRenderer {
           targets.push(target);
           temporary.set(name, { node, slots: createSlots(false), targets: [target] });
         });
+        for (const [path, image] of images) {
+          const target = coverTarget(image, frame.width, frame.height);
+          targets.push(target);
+          temporaryImages.set(path, target);
+        }
         const allocation = glProblem(targets);
         if (allocation) return { ok: false, error: allocation };
 
         for (const buffer of temporary.values()) buffer.slots.beginFrame();
-        runPasses(current, frame, temporary);
+        runPasses(current, frame, { buffers: temporary, images: temporaryImages });
         const main = temporary.get('main')!.targets[0]!;
         gl.bindFramebuffer(gl.FRAMEBUFFER, main.framebuffer);
         const pixels = readPixels(main.width, main.height);
