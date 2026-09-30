@@ -89,6 +89,7 @@ describe('takeOutputCapture', () => {
     const rendered: FrameInputs[] = [];
     const renderer = {
       setShader: () => ({ ok: true }) as const,
+      setImage: () => null,
       setGraph: () => {},
       isRunning: () => true,
       clearBuffers: () => {},

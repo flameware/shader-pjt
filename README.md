@@ -74,9 +74,10 @@ export default defineSketch({
 ```
 
 - `channels`: 배열의 위치가 `iChannelN` 슬롯입니다(최대 4개). Pass 이름을 쓰면 그 Pass의 이번 프레임 출력을, `prev('이름')`을 쓰면 지난 프레임 출력을 읽습니다.
+- **이미지 Channel**: `./`로 시작하는 경로를 쓰면 Sketch 폴더 안의 이미지(png, jpg, jpeg, webp)를 읽습니다. 예: `main: { channels: ['./density.png'] }`. 이미지는 작업 해상도에 맞춰 가운데 기준으로 잘려 채워지므로(cover, 늘어나지 않음) `texture(iChannel0, fragCoord / iResolution.xy)`로 읽으면 캔버스에 딱 맞습니다. `iChannelResolution`은 작업 해상도이고, 값은 파일 그대로(`rgba8`, 색공간 변환 없음)입니다. 이미지를 저장하면 시간과 Parameter를 유지한 채 이미지만 바뀝니다.
 - **Feedback**: 어느 Pass든 `prev()`로 읽히는 Sketch입니다. `templates/feedback`처럼 `main: { channels: [prev('main')] }`이면 자기 자신의 지난 프레임을 읽습니다.
 - 버퍼 옵션: `format`(`rgba8` / `rgba16f` 기본 / `rgba32f`), `filter`(`linear` 기본 / `nearest`), `wrap`(`clamp` 기본 / `repeat` / `mirror`), `scale`(작업 해상도 대비 비율) 또는 `size: [w, h]`. `main`에는 `channels`, `filter`, `wrap`만 쓸 수 있습니다.
-- 실행 순서는 의존 관계로 정해지고 `main`이 항상 마지막입니다. 순환, 없는 Pass, 채널 초과는 에러로, `main`이 쓰지 않는 Pass는 경고로 표시됩니다.
+- 실행 순서는 의존 관계로 정해지고 `main`이 항상 마지막입니다. 순환, 없는 Pass, 없는 이미지, 채널 초과는 에러로, `main`이 쓰지 않는 Pass는 경고로 표시됩니다.
 - `.frag`를 저장하면 시간과 Feedback을 유지한 채 셰이더만 바뀝니다. `sketch.ts`를 고치거나 `.frag`를 추가·삭제하면 페이지를 다시 불러오고 처음부터 시작합니다.
 
 ### Parameter (`@param`)

@@ -12,6 +12,7 @@ function setup() {
   let clears = 0;
   const renderer: Renderer = {
     setShader: () => ({ ok: true }),
+    setImage: () => null,
     setGraph: () => {},
     isRunning: () => true,
     clearBuffers: () => void clears++,

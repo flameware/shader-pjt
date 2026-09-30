@@ -1,12 +1,22 @@
 import type { Diagnostic } from '../diagnostics/diagnostic';
 import { MAX_OUTPUT_SIDE, OUTPUT_PRESETS, type OutputSize, parseOutputSize } from '../output/output-size';
 import type { BufferFilter, BufferFormat, BufferWrap } from './define';
+import { isImageSource, resolveImagePath } from './images';
 
-/** A resolved Channel: the Pass it reads, and whether it reads last frame's output (`prev()`). */
-export interface ChannelRef {
+/** A Channel reading a Pass: the Pass it reads, and whether it reads last frame's output (`prev()`). */
+export interface PassChannel {
   pass: string;
   prev: boolean;
 }
+
+/** A Channel reading an image file of the Sketch folder (#54). */
+export interface ImageChannel {
+  /** Project-relative path of the image. */
+  image: string;
+}
+
+/** A resolved Channel. */
+export type ChannelRef = PassChannel | ImageChannel;
 
 /** How big a Pass's buffer is: relative to the render size, or fixed pixels. */
 export type BufferSize = { scale: number } | { size: [number, number] };
@@ -38,6 +48,8 @@ export interface PassGraph {
   passes: Record<string, PassNode>;
   /** The Passes that run each frame, in order; `main` is always last. */
   order: string[];
+  /** Project-relative paths of the images the running Passes read, each once. */
+  images: string[];
 }
 
 export interface PassGraphInput {
@@ -45,6 +57,8 @@ export interface PassGraphInput {
   sketchFile: string;
   /** Pass name → project-relative `.frag` path, for the Sketch's top-level `.frag` files. */
   passFiles: Record<string, string>;
+  /** Project-relative paths of the image files under `sketches/`, for image Channels. */
+  imageFiles: readonly string[];
   /** The default export of `sketch.ts`, or `undefined` when the Sketch has none. */
   config: unknown;
   /** Whether the device has `OES_texture_float_linear`. */
@@ -85,7 +99,31 @@ function unknownKeys(raw: Raw, allowed: readonly string[], where: string, proble
   }
 }
 
-function parseChannels(name: string, raw: unknown, passNames: readonly string[], problems: Problems): ChannelRef[] {
+/** What `sketch.ts` may name in a Channel: the Sketch's Passes, and image files under its folder. */
+interface ChannelTargets {
+  passNames: readonly string[];
+  folder: string;
+  imageFiles: readonly string[];
+}
+
+function parseImageChannel(source: string, prev: boolean, targets: ChannelTargets, at: string, problems: Problems): ImageChannel | null {
+  if (prev) {
+    problems.errors.push(`${at}: 이미지 '${source}'는 prev()로 읽을 수 없습니다 (이미지는 프레임마다 같습니다)`);
+    return null;
+  }
+  const resolved = resolveImagePath(targets.folder, source);
+  if (!resolved.ok) {
+    problems.errors.push(`${at}: '${source}': ${resolved.error}`);
+    return null;
+  }
+  if (!targets.imageFiles.includes(resolved.path)) {
+    problems.errors.push(`${at}: 없는 이미지 '${source}' (${resolved.path}가 없습니다)`);
+    return null;
+  }
+  return { image: resolved.path };
+}
+
+function parseChannels(name: string, raw: unknown, targets: ChannelTargets, problems: Problems): ChannelRef[] {
   const where = `passes.${name}.channels`;
   if (raw === undefined) return [];
   if (!Array.isArray(raw)) {
@@ -95,18 +133,22 @@ function parseChannels(name: string, raw: unknown, passNames: readonly string[],
   if (raw.length > MAX_CHANNELS) problems.errors.push(`${where}: Channel은 최대 ${MAX_CHANNELS}개입니다 (iChannel0..${MAX_CHANNELS - 1}), 지금 ${raw.length}개`);
   const channels: ChannelRef[] = [];
   raw.slice(0, MAX_CHANNELS).forEach((source: unknown, slot) => {
-    const ref: ChannelRef | null =
+    const at = `${where}[${slot}] (iChannel${slot})`;
+    const ref: PassChannel | null =
       typeof source === 'string'
         ? { pass: source, prev: false }
         : isObject(source) && typeof source.prev === 'string'
           ? { pass: source.prev, prev: true }
           : null;
     if (ref === null) {
-      problems.errors.push(`${where}[${slot}] (iChannel${slot}): Pass 이름 문자열이나 prev('이름')이어야 합니다`);
-    } else if (!passNames.includes(ref.pass)) {
-      problems.errors.push(`${where}[${slot}] (iChannel${slot}): 없는 Pass '${ref.pass}' (${ref.pass}.frag가 없습니다)`);
+      problems.errors.push(`${at}: Pass 이름 문자열, prev('이름'), 또는 './'로 시작하는 이미지 경로여야 합니다`);
+    } else if (isImageSource(ref.pass)) {
+      const image = parseImageChannel(ref.pass, ref.prev, targets, at, problems);
+      if (image) channels.push(image);
+    } else if (!targets.passNames.includes(ref.pass)) {
+      problems.errors.push(`${at}: 없는 Pass '${ref.pass}' (${ref.pass}.frag가 없습니다)`);
     } else if (ref.pass === 'main' && !ref.prev) {
-      problems.errors.push(`${where}[${slot}] (iChannel${slot}): main은 마지막에 실행되므로 이번 프레임의 main은 읽을 수 없습니다. prev('main')을 쓰세요`);
+      problems.errors.push(`${at}: main은 마지막에 실행되므로 이번 프레임의 main은 읽을 수 없습니다. prev('main')을 쓰세요`);
     } else {
       channels.push(ref);
     }
@@ -156,7 +198,7 @@ function parseBuffer(name: string, raw: Raw, floatLinear: boolean, problems: Pro
 }
 
 /** Reads the `sketch.ts` value into per-Pass Channels and buffers. Passes it doesn't mention get the defaults. */
-function parseConfig(config: unknown, passFiles: Record<string, string>, floatLinear: boolean, problems: Problems) {
+function parseConfig(config: unknown, passFiles: Record<string, string>, images: Omit<ChannelTargets, 'passNames'>, floatLinear: boolean, problems: Problems) {
   const passNames = Object.keys(passFiles);
   const result: { title?: string; output?: OutputSize; passes: Record<string, { channels: ChannelRef[]; buffer: BufferSpec }> } = { passes: {} };
   let passConfigs: Raw = {};
@@ -194,7 +236,7 @@ function parseConfig(config: unknown, passFiles: Record<string, string>, floatLi
         if (raw[key] !== undefined) problems.errors.push(`passes.main.${key}: main에는 쓸 수 없습니다 (main은 캔버스 크기, rgba16f)`);
       }
     }
-    const channels = parseChannels(name, raw.channels, passNames, problems);
+    const channels = parseChannels(name, raw.channels, { passNames, ...images }, problems);
     const buffer = parseBuffer(name, name === 'main' ? { filter: raw.filter, wrap: raw.wrap } : raw, floatLinear, problems);
     result.passes[name] = { channels, buffer };
   }
@@ -209,14 +251,17 @@ function reachableFromMain(passes: Record<string, PassNode>): Set<string> {
     const node = passes[name];
     if (!node || seen.has(name)) return;
     seen.add(name);
-    for (const channel of node.channels) visit(channel.pass);
+    for (const channel of passChannels(node)) visit(channel.pass);
   };
   visit('main');
   return seen;
 }
 
+/** The Channels of a Pass that read other Passes (not images). */
+const passChannels = (node: PassNode) => node.channels.filter((c): c is PassChannel => 'pass' in c);
+
 /** This frame's references of a Pass (the ones that constrain order). */
-const thisFrame = (node: PassNode) => node.channels.filter((c) => !c.prev).map((c) => c.pass);
+const thisFrame = (node: PassNode) => passChannels(node).filter((c) => !c.prev).map((c) => c.pass);
 
 /**
  * Kahn's algorithm over this frame's references, always taking the ready Pass that sorts first
@@ -257,10 +302,11 @@ function findCycle(stuck: string[], passes: Record<string, PassNode>): string[] 
  * in what order: a topological sort of this frame's Channel references (`prev()` doesn't order),
  * name order where it doesn't matter, `main` last.
  */
-export function buildPassGraph({ sketchFile, passFiles, config, floatLinear }: PassGraphInput): PassGraphResult {
+export function buildPassGraph({ sketchFile, passFiles, imageFiles, config, floatLinear }: PassGraphInput): PassGraphResult {
   const problems: Problems = { errors: [], warnings: [] };
   if (!('main' in passFiles)) problems.errors.push('main.frag가 없습니다 (Main pass는 필수)');
-  const parsed = parseConfig(config, passFiles, floatLinear, problems);
+  const folder = sketchFile.slice(0, sketchFile.lastIndexOf('/'));
+  const parsed = parseConfig(config, passFiles, { folder, imageFiles }, floatLinear, problems);
   const diagnostics: Diagnostic[] = [
     ...problems.errors.map((message): Diagnostic => ({ severity: 'error', file: sketchFile, message })),
     ...problems.warnings.map((message): Diagnostic => ({ severity: 'warning', file: sketchFile, message })),
@@ -272,7 +318,7 @@ export function buildPassGraph({ sketchFile, passFiles, config, floatLinear }: P
     passes[name] = { name, file, ...parsed.passes[name]!, feedback: false };
   }
   for (const node of Object.values(passes)) {
-    for (const channel of node.channels) if (channel.prev) passes[channel.pass]!.feedback = true;
+    for (const channel of passChannels(node)) if (channel.prev) passes[channel.pass]!.feedback = true;
   }
   const running = reachableFromMain(passes);
   for (const node of Object.values(passes).sort((a, b) => a.name.localeCompare(b.name))) {
@@ -287,7 +333,9 @@ export function buildPassGraph({ sketchFile, passFiles, config, floatLinear }: P
     diagnostics.push({ severity: 'error', file: sketchFile, message: `순환 참조: ${loop} (이전 프레임을 읽으려면 prev()를 쓰세요)` });
     return { graph: null, diagnostics };
   }
-  const graph: PassGraph = { passes, order: sorted.order.filter((name) => running.has(name)) };
+  const order = sorted.order.filter((name) => running.has(name));
+  const images = order.flatMap((name) => passes[name]!.channels.flatMap((c) => ('image' in c ? [c.image] : [])));
+  const graph: PassGraph = { passes, order, images: [...new Set(images)] };
   if (parsed.title !== undefined) graph.title = parsed.title;
   if (parsed.output !== undefined) graph.output = parsed.output;
   return { graph, diagnostics };

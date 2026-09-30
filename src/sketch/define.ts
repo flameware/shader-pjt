@@ -11,7 +11,12 @@ export interface PrevRef {
   readonly prev: string;
 }
 
-/** What a Channel reads: a Pass's output this frame (by name), or last frame's via `prev()`. */
+/**
+ * What a Channel reads: a Pass's output this frame (by name), last frame's via `prev()`, or an
+ * image file of the Sketch folder by a path starting with `./` (png, jpg, jpeg, webp; #54). An
+ * image is cropped to cover the render size, so `texture(iChannelN, fragCoord / iResolution.xy)`
+ * lays it over the canvas.
+ */
 export type ChannelSource = string | PrevRef;
 
 export type BufferFormat = 'rgba8' | 'rgba16f' | 'rgba32f';

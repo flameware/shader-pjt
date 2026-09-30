@@ -4,6 +4,7 @@ import { compileDiagnostics } from './diagnostics/compile';
 import type { Diagnostic } from './diagnostics/diagnostic';
 import { createClock } from './engine/clock';
 import { createEngine } from './engine/engine';
+import { loadImage } from './engine/load-image';
 import { createMouse, toRenderPixel } from './engine/mouse';
 import { createRenderer } from './engine/renderer';
 import { canvasLayout } from './output/layout';
@@ -16,6 +17,7 @@ import { createPassPipeline } from './params/pipeline';
 import { browserStorage, createParameterValues, memoryStorage } from './params/values';
 import { createRecordingSettings } from './recording/settings';
 import type { ShaderSource } from './shader-source';
+import { IMAGE_UPDATED_EVENT } from './sketch/events';
 import { sketchConfigFile, sketchPassFiles } from './sketch/files';
 import { buildPassGraph } from './sketch/graph';
 import { sketchNames } from './sketch/pick';
@@ -37,6 +39,9 @@ import { mountSketchPicker } from './ui/sketch-picker';
 // reloads the same way; `plugins/sketch-watch.ts` announces it first so the reload opens it (#20).
 const fragModules = import.meta.glob<ShaderSource>('/sketches/**/*.frag', { import: 'default' });
 const sketchModules = import.meta.glob<Record<string, unknown>>('/sketches/*/sketch.ts');
+// Image Channels (#54); the extensions are `IMAGE_EXTENSIONS` in `src/sketch/images.ts`. Adding or
+// removing an image reloads the page like a .frag; saving one doesn't (`plugins/image-hot.ts`).
+const imageModules = import.meta.glob<string>('/sketches/**/*.{png,jpg,jpeg,webp,PNG,JPG,JPEG,WEBP}', { query: '?url', import: 'default' });
 
 /** Replaces the canvas with a plain-text message and stops. */
 function showMessage(text: string): void {
@@ -99,11 +104,45 @@ async function start(): Promise<void> {
   const built =
     loaded.diagnostics.length > 0
       ? { graph: null, diagnostics: [] }
-      : buildPassGraph({ sketchFile: sketchConfigFile(name), passFiles, config: loaded.config, floatLinear: hasFloatLinear(gl) });
+      : buildPassGraph({
+          sketchFile: sketchConfigFile(name),
+          passFiles,
+          imageFiles: Object.keys(imageModules).map((p) => p.slice(1)),
+          config: loaded.config,
+          floatLinear: hasFloatLinear(gl),
+        });
   engine.setGraph(built.graph);
   picker.setFeedback(engine.hasFeedback());
   if (built.graph?.title) document.title = `${built.graph.title} · shader playground`;
   diagnostics.report('graph', [...fileProblems, ...loaded.diagnostics, ...built.diagnostics]);
+
+  // Image Channels (#54): every image the running Passes read is loaded before the first frame.
+  // A saved image is loaded again in place, keeping time and Parameters; one that can't be used
+  // reads black, with an error in the banner.
+  const images = built.graph?.images ?? [];
+  const latestLoad = new Map<string, number>();
+  const loadChannelImage = async (path: string, timestamp?: number) => {
+    const load = (latestLoad.get(path) ?? 0) + 1;
+    latestLoad.set(path, load);
+    let problem: string | null;
+    try {
+      const url = await imageModules[`/${path}`]!();
+      const bitmap = await loadImage(timestamp === undefined ? url : `${url}${url.includes('?') ? '&' : '?'}t=${timestamp}`);
+      // A newer save started loading meanwhile; it wins.
+      if (latestLoad.get(path) !== load) return bitmap.close();
+      problem = engine.setImage(path, bitmap);
+      bitmap.close();
+    } catch (error) {
+      if (latestLoad.get(path) !== load) return;
+      engine.setImage(path, null);
+      problem = `이미지를 불러오지 못했습니다: ${error instanceof Error ? error.message : String(error)}`;
+    }
+    diagnostics.report(`image:${path}`, problem === null ? [] : [{ severity: 'error', file: path, message: problem }]);
+  };
+  await Promise.all(images.map((path) => loadChannelImage(path)));
+  import.meta.hot?.on(IMAGE_UPDATED_EVENT, ({ path, timestamp }) => {
+    if (images.includes(path)) void loadChannelImage(path, timestamp);
+  });
 
   // Parameters (#19): values per Sketch in localStorage, controls in the Tweakpane panel.
   const parameters = createParameterValues(name, browserStorage());

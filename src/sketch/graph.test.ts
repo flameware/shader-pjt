@@ -3,9 +3,10 @@ import { prev } from './define';
 import { buildPassGraph, type PassGraphInput } from './graph';
 
 const dir = 'sketches/s';
-const input = (passes: string[], config?: unknown, floatLinear = true): PassGraphInput => ({
+const input = (passes: string[], config?: unknown, floatLinear = true, imageFiles = [`${dir}/density.png`]): PassGraphInput => ({
   sketchFile: `${dir}/sketch.ts`,
   passFiles: Object.fromEntries(passes.map((p) => [p, `${dir}/${p}.frag`])),
+  imageFiles,
   config,
   floatLinear,
 });
@@ -124,11 +125,40 @@ describe('buildPassGraph', () => {
       ['an unknown Pass option', { passes: { a: { channel: ['main'] } } }, "알 수 없는 키 'channel'"],
       ['a format on main', { passes: { main: { format: 'rgba8' } } }, 'main'],
       ['a size on main', { passes: { main: { scale: 0.5 } } }, 'main'],
+      ['an image that does not exist', { passes: { main: { channels: ['./nope.png'] } } }, "없는 이미지 './nope.png'"],
+      ['an image of an unsupported format', { passes: { main: { channels: ['./density.gif'] } } }, 'png, jpg, jpeg, webp'],
+      ['an image outside the Sketch folder', { passes: { main: { channels: ['../other/density.png'] } } }, 'Sketch 폴더 밖'],
+      ['prev() of an image', { passes: { main: { channels: [prev('./density.png')] } } }, 'prev()'],
     ];
     it.each(cases)('%s', (_, config, text) => {
       const { graph, diagnostics } = buildPassGraph(input(['a', 'main'], config));
       expect(graph).toBeNull();
       expect(diagnostics).toContainEqual({ severity: 'error', file: `${dir}/sketch.ts`, message: expect.stringContaining(text) });
+    });
+  });
+
+  describe('image Channels', () => {
+    it('read an image file of the Sketch folder, named by a relative path', () => {
+      const { graph, diagnostics } = buildPassGraph(input(['main'], { passes: { main: { channels: ['./density.png'] } } }));
+      expect(diagnostics).toEqual([]);
+      expect(graph?.order).toEqual(['main']);
+      expect(graph?.passes.main?.channels).toEqual([{ image: `${dir}/density.png` }]);
+    });
+
+    it('sit in any slot next to Pass Channels, and do not order or mark Feedback', () => {
+      const config = { passes: { main: { channels: ['a', './density.png', prev('main')] }, a: { channels: ['./density.png'] } } };
+      const { graph, diagnostics } = buildPassGraph(input(['a', 'main'], config));
+      expect(diagnostics).toEqual([]);
+      expect(graph?.order).toEqual(['a', 'main']);
+      expect(graph?.passes.main?.channels[1]).toEqual({ image: `${dir}/density.png` });
+      expect(graph?.passes.a?.feedback).toBe(false);
+    });
+
+    it('are listed once in the graph, for the Passes that run', () => {
+      const config = { passes: { main: { channels: ['a', './density.png'] }, a: { channels: ['./density.png'] }, b: { channels: ['./photo.jpg'] } } };
+      const { graph } = buildPassGraph(input(['a', 'b', 'main'], config, true, [`${dir}/density.png`, `${dir}/photo.jpg`]));
+      expect(graph?.images).toEqual([`${dir}/density.png`]);
+      expect(buildPassGraph(input(['main'])).graph?.images).toEqual([]);
     });
   });
 
